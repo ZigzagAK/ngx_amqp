@@ -35,7 +35,7 @@ local function default(v, def)
   return def
 end
 
-local function amqp_connect(opts, exch)
+local function amqp_connect(opts)
   local ctx = amqp.new {
     role         = "producer",
     ssl          = opts.ssl,
@@ -112,7 +112,7 @@ local function amqp_queue_declare(ctx, req)
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP declare queue: endpoint=" .. key_fn(req.opts) .. ", queue=" .. cjson.encode(req.queue))
   end
-  
+
   if not ok then
     if type(err) == "number" then err = err2 end
     ngx.log(ngx.ERR, "AMQP declare queue: " .. err)
@@ -132,7 +132,7 @@ local function amqp_queue_bind(ctx, req)
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP bind queue: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.bind))
   end
-  
+
   if not ok then
     if type(err) == "number" then err = err2 end
     ngx.log(ngx.ERR, "AMQP bind queue: " .. err)
@@ -268,7 +268,7 @@ amqp_worker = {
 
   thread_func = function(cache, num)
     ngx.log(ngx.INFO, "AMQP worker #" .. num .. " has been started")
-    
+
     local yield = coroutine.yield
     local self = coroutine.running()
 
@@ -284,16 +284,16 @@ amqp_worker = {
         end
 
         yield(self)
-        ngx.sleep(0.1)
+        ngx.sleep(0.01)
 
         goto continue
       end
- 
+
       CONFIG:incr("amqp_worker.queue", -1)
 
       local ok, err
 
-      for i=1,retry
+      for _=1,retry
       do
         if req.forgot then
           goto continue
@@ -306,7 +306,7 @@ amqp_worker = {
         local ctx = cache[key]
 
         if not ctx then
-          ok, ctx, err = amqp_connect(req.opts, req.exch)
+          ok, ctx, err = amqp_connect(req.opts)
           if ok then
             cache[key] = ctx
             CONFIG:incr(key, 1, 0)
