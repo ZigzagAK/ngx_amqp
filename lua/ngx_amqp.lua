@@ -20,7 +20,8 @@ _M.connect_options = {
 local publisher_pool_size = CONFIG:get("amqp.publisher_pool_size") or 1
 local async_queue_size    = CONFIG:get("amqp.async_queue_size")    or 100
 local publisher_timeout   = CONFIG:get("amqp.publisher_timeout")   or 5
-local trace_messages      = CONFIG:get("amqp.trace_messages")      or false
+local trace_ddl           = CONFIG:get("amqp.trace_ddl")           or true
+local trace_publish       = CONFIG:get("amqp.trace_publish")       or false
 
 local function key_fn(o)
   return o.user .. "@" .. o.host .. ":" .. o.port .. ":" .. o.vhost
@@ -65,9 +66,11 @@ local function amqp_connect(opts, exch)
 end
 
 local function amqp_disconnect(ctx)
-  ctx:teardown()
-  ctx:close()
-  ngx.log(ngx.INFO, "AMQP disconnected, endpoint=" .. key_fn(ctx.opts.add))
+  if ctx then
+    ctx:teardown()
+    ctx:close()
+    ngx.log(ngx.INFO, "AMQP disconnected, endpoint=" .. key_fn(ctx.opts.add))
+  end
 end
 
 local function amqp_exchange_declare(ctx, req)
@@ -81,7 +84,7 @@ local function amqp_exchange_declare(ctx, req)
     no_wait     = default(req.exch.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP declare exchange: endpoint=" .. key_fn(req.opts) .. ", exchange=" .. cjson.encode(req.exch))
   end
 
@@ -103,7 +106,7 @@ local function amqp_queue_declare(ctx, req)
     no_wait     = default(req.queue.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP declare queue: endpoint=" .. key_fn(req.opts) .. ", queue=" .. cjson.encode(req.queue))
   end
   
@@ -123,7 +126,7 @@ local function amqp_queue_bind(ctx, req)
     no_wait     = default(req.bind.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP bind queue: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.bind))
   end
   
@@ -142,7 +145,7 @@ local function amqp_queue_unbind(ctx, req)
     routing_key = default(req.unbind.routing_key, "")
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP unbind queue: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.unbind))
   end
 
@@ -162,7 +165,7 @@ local function amqp_exchange_bind(ctx, req)
     no_wait     = default(req.ebind.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP bind exchange: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.ebind))
   end
 
@@ -182,7 +185,7 @@ local function amqp_exchange_unbind(ctx, req)
     no_wait     = default(req.eunbind.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP unbind exchange: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.eunbind))
   end
 
@@ -201,7 +204,7 @@ local function amqp_exchange_delete(ctx, req)
     no_wait   = default(req.edelete.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP delete exchange: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.edelete))
   end
 
@@ -221,7 +224,7 @@ local function amqp_queue_delete(ctx, req)
     no_wait   = default(req.qdelete.no_wait, false)
   })
 
-  if trace_messages then
+  if trace_ddl then
     ngx.log(ngx.INFO, "AMQP delete queue: endpoint=" .. key_fn(req.opts) .. ", opt=" .. cjson.encode(req.qdelete))
   end
   
@@ -239,7 +242,7 @@ local function amqp_publish_message(ctx, req)
 
   local ok, err = ctx:publish(req.mesg)
 
-  if trace_messages then
+  if trace_publish then
     ngx.log(ngx.INFO, "AMQP publish: endpoint=" .. key_fn(req.opts) .. ", exchange=" .. cjson.encode(req.exch) .. ", message=" .. req.mesg or "")
   end
 
@@ -302,7 +305,7 @@ amqp_worker = {
         end
       end
 
-      if ok and req.exch then
+      if ok and req.exch and req.exch.declare then
         ok, err = amqp_exchange_declare(ctx, req)
       end
 
@@ -406,6 +409,8 @@ function _M.exchange_declare(exchange, options)
     opts = options or _M.connect_options,
     exch = exchange
   }
+  
+  req.exch.declare = true
 
   table.insert(amqp_worker.queue, req)
 
@@ -547,7 +552,7 @@ function _M.queue_delete(qd, options)
   return wait(req, remain)
 end
 
-function _M.publish(exchange, message, options)
+function _M.publish(exchange, message, async, options)
   local remain, err = wait_queue()
 
   if remain == 0 then
@@ -563,6 +568,10 @@ function _M.publish(exchange, message, options)
   table.insert(amqp_worker.queue, req)
 
   CONFIG:incr("amqp_worker.queue", 1, 0)
+
+  if async then
+    return true, nil
+  end
 
   return wait(req, remain)
 end
