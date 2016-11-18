@@ -22,6 +22,7 @@ local async_queue_size = CONFIG:get("amqp.async_queue_size") or 100
 local timeout          = CONFIG:get("amqp.timeout")          or 5
 local trace_ddl        = CONFIG:get("amqp.trace_ddl")        or true
 local trace_publish    = CONFIG:get("amqp.trace_publish")    or false
+local retry            = CONFIG:get("amqp.retry")            or 3
 
 local function key_fn(o)
   return o.user .. "@" .. o.host .. ":" .. o.port .. ":" .. o.vhost
@@ -286,64 +287,75 @@ amqp_worker = {
  
       CONFIG:incr("amqp_worker.queue", -1)
 
-      if req.forgot then
-        goto continue
-      end
+      local ok, err
 
-      local key = key_fn(req.opts)
-      local ctx = cache[key]
-      local ok = true, err
-
-      if not ctx then
-        ok, ctx, err = amqp_connect(req.opts, req.exch)
-        if ok then
-          cache[key] = ctx
-          CONFIG:incr(key, 1, 0)
-        else
-          ngx.log(ngx.ERR, "AMQP connect: " .. err)
+      for i=1,retry
+      do
+        if req.forgot then
+          goto continue
         end
-      end
 
-      if ok and req.exch and req.exch.declare then
-        ok, err = amqp_exchange_declare(ctx, req)
-      end
+        ok = true
+        err = nil
 
-      if ok and req.queue then
-        ok, err = amqp_queue_declare(ctx, req)
-      end
+        local key = key_fn(req.opts)
+        local ctx = cache[key]
 
-      if ok and req.bind then
-        ok, err = amqp_queue_bind(ctx, req)
-      end
+        if not ctx then
+          ok, ctx, err = amqp_connect(req.opts, req.exch)
+          if ok then
+            cache[key] = ctx
+            CONFIG:incr(key, 1, 0)
+          else
+            ngx.log(ngx.ERR, "AMQP connect: " .. err)
+          end
+        end
 
-      if ok and req.ebind then
-        ok, err = amqp_exchange_bind(ctx, req)
-      end
+        if ok and req.exch and req.exch.declare then
+          ok, err = amqp_exchange_declare(ctx, req)
+        end
+
+        if ok and req.queue then
+          ok, err = amqp_queue_declare(ctx, req)
+        end
+
+        if ok and req.bind then
+          ok, err = amqp_queue_bind(ctx, req)
+        end
+
+        if ok and req.ebind then
+          ok, err = amqp_exchange_bind(ctx, req)
+        end
       
-      if ok and req.mesg then
-        ok, err = amqp_publish_message(ctx, req)
-      end
+        if ok and req.mesg then
+          ok, err = amqp_publish_message(ctx, req)
+        end
       
-      if ok and req.unbind then
-        ok, err = amqp_queue_unbind(ctx, req)
-      end
+        if ok and req.unbind then
+          ok, err = amqp_queue_unbind(ctx, req)
+        end
 
-      if ok and req.eunbind then
-        ok, err = amqp_exchange_unbind(ctx, req)
-      end
+        if ok and req.eunbind then
+          ok, err = amqp_exchange_unbind(ctx, req)
+        end
 
-      if ok and req.edelete then
-        ok, err = amqp_exchange_delete(ctx, req)
-      end
+        if ok and req.edelete then
+          ok, err = amqp_exchange_delete(ctx, req)
+        end
 
-      if ok and req.qdelete then
-        ok, err = amqp_queue_delete(ctx, req)
-      end
+        if ok and req.qdelete then
+          ok, err = amqp_queue_delete(ctx, req)
+        end
 
-      if not ok then
-        amqp_disconnect(ctx)
-        cache[key] = nil
-        CONFIG:incr(key, -1)
+        if not ok then
+          amqp_disconnect(ctx)
+          cache[key] = nil
+          CONFIG:incr(key, -1)
+        end
+
+        if ok then
+          break
+        end
       end
 
       req.err = err
