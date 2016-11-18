@@ -262,7 +262,6 @@ end
 local amqp_worker
 amqp_worker = {
 
-  async_queue_size = 100,
   queue = {},
   pool = {},
 
@@ -275,6 +274,7 @@ amqp_worker = {
     while true
     do
 :: continue ::
+      yield(self)
 
       local req = table.remove(amqp_worker.queue)
 
@@ -283,7 +283,6 @@ amqp_worker = {
           break
         end
 
-        yield(self)
         ngx.sleep(0.01)
 
         goto continue
