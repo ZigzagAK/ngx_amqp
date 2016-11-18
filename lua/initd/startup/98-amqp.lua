@@ -4,8 +4,6 @@ local _M = {
 
 local amqp = require "ngx_amqp"
 
-local CONFIG = ngx.shared.config
-
 function _M.startup()
   amqp.startup()
 end
