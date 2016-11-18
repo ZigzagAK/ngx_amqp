@@ -78,7 +78,7 @@ end
 
 local function amqp_exchange_declare(ctx, req)
   local ok, err, err2 = amqp.exchange_declare(ctx, {
-    exchange    = req.exch.name,
+    exchange    = req.exch.exchange,
     typ         = default(req.exch.typ, "topic"),
     passive     = default(req.exch.passive, false),
     durable     = default(req.exch.durable, true),
@@ -240,10 +240,7 @@ local function amqp_queue_delete(ctx, req)
 end
 
 local function amqp_publish_message(ctx, req)
-  ctx.opts.routing_key = req.exch.routing_key
-  ctx.opts.exchange    = req.exch.name
-
-  local ok, err = ctx:publish(req.mesg)
+  local ok, err = ctx:publish(req.mesg, req.exch)
 
   if trace_publish then
     ngx.log(ngx.INFO, "AMQP publish: endpoint=" .. key_fn(req.opts) .. ", exchange=" .. cjson.encode(req.exch) .. ", message=" .. req.mesg or "")
@@ -252,9 +249,6 @@ local function amqp_publish_message(ctx, req)
   if not ok then
     ngx.log(ngx.ERR, "AMQP publish failed: " .. err)
   end
-
-  ctx.opts.routing_key = nil
-  ctx.opts.exchange    = nil
 
   return ok, err
 end
