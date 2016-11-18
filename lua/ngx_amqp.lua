@@ -68,7 +68,9 @@ end
 
 local function amqp_disconnect(ctx)
   if ctx then
-    ctx:teardown()
+    if not ngx.worker.exiting() then
+      ctx:teardown()
+    end
     ctx:close()
     ngx.log(ngx.INFO, "AMQP disconnected, endpoint=" .. key_fn(ctx.opts.add))
   end
@@ -259,15 +261,16 @@ end
 
 local amqp_worker
 amqp_worker = {
+
   async_queue_size = 100,
   queue = {},
   pool = {},
-  routine = function(premature, cache, num)
-    if premature then
-      return
-    end
 
+  thread_func = function(cache, num)
     ngx.log(ngx.INFO, "AMQP worker #" .. num .. " has been started")
+    
+    local yield = coroutine.yield
+    local self = coroutine.running()
 
     while true
     do
@@ -280,6 +283,7 @@ amqp_worker = {
           break
         end
 
+        yield(self)
         ngx.sleep(0.1)
 
         goto continue
@@ -370,6 +374,22 @@ amqp_worker = {
     end
 
     ngx.log(ngx.INFO, "AMQP worker #" .. num .. " has been stopped")
+  end,
+
+  startup = function()
+    ngx.log(ngx.INFO, "AMQP workers pool size=" .. pool_size)
+
+    for i=1,pool_size
+    do
+      local thread = { cache = {} }
+      thread.id = ngx.thread.spawn(amqp_worker.thread_func, thread.cache, i)
+      table.insert(amqp_worker.pool, thread)
+    end
+
+    for _, thread in pairs(amqp_worker.pool)
+    do
+      ngx.thread.wait(thread.id)
+    end
   end
 }
 
@@ -588,15 +608,9 @@ function _M.publish(exchange, message, async, options)
 end
 
 function _M.startup()
-  ngx.log(ngx.INFO, "AMQP workers pool size=" .. pool_size)
-  for i=1,pool_size
-  do
-    local cache = {}
-    local ok, err = ngx.timer.at(0, amqp_worker.routine, cache, i)
-    if not ok then
-      error("failed to start AMQP worker: " .. err)
-    end
-    table.insert(amqp_worker.pool, cache)
+  local ok, err = ngx.timer.at(0, amqp_worker.startup)
+  if not ok then
+    error("AMQP failed to start workers: " .. err)
   end
 end
 
@@ -606,9 +620,9 @@ function _M.info()
   r.queue_size = CONFIG:get("amqp_worker.queue") or 0
   r.publishers = {}
 
-  for _, cache in pairs(amqp_worker.pool)
+  for _, thread in pairs(amqp_worker.pool)
   do
-    for endpoint, _ in pairs(cache)
+    for endpoint, _ in pairs(thread.cache)
     do
       r.publishers[endpoint] = CONFIG:get(endpoint)
     end
