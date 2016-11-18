@@ -17,11 +17,11 @@ _M.connect_options = {
   no_wait  = CONFIG:get("amqp.no_wait")
 }
 
-local publisher_pool_size = CONFIG:get("amqp.publisher_pool_size") or 1
-local async_queue_size    = CONFIG:get("amqp.async_queue_size")    or 100
-local publisher_timeout   = CONFIG:get("amqp.publisher_timeout")   or 5
-local trace_ddl           = CONFIG:get("amqp.trace_ddl")           or true
-local trace_publish       = CONFIG:get("amqp.trace_publish")       or false
+local pool_size        = CONFIG:get("amqp.pool_size")        or 1
+local async_queue_size = CONFIG:get("amqp.async_queue_size") or 100
+local timeout          = CONFIG:get("amqp.timeout")          or 5
+local trace_ddl        = CONFIG:get("amqp.trace_ddl")        or true
+local trace_publish    = CONFIG:get("amqp.trace_publish")    or false
 
 local function key_fn(o)
   return o.user .. "@" .. o.host .. ":" .. o.port .. ":" .. o.vhost
@@ -259,7 +259,6 @@ end
 local amqp_worker
 amqp_worker = {
   async_queue_size = 100,
-  publisher_timeout = 5,
   queue = {},
   pool = {},
   routine = function(premature, cache, num)
@@ -363,9 +362,9 @@ amqp_worker = {
 }
 
 local function wait_queue()
-  local totime = ngx.now() + publisher_timeout
+  local totime = ngx.now() + timeout
   local queue_size = CONFIG:get("amqp_worker.queue") or 0
-  local remain = publisher_timeout
+  local remain = timeout
 
   while queue_size >= async_queue_size and remain > 0
   do
@@ -577,8 +576,8 @@ function _M.publish(exchange, message, async, options)
 end
 
 function _M.startup()
-  ngx.log(ngx.INFO, "AMQP workers pool size=" .. publisher_pool_size)
-  for i=1,publisher_pool_size
+  ngx.log(ngx.INFO, "AMQP workers pool size=" .. pool_size)
+  for i=1,pool_size
   do
     local cache = {}
     local ok, err = ngx.timer.at(0, amqp_worker.routine, cache, i)

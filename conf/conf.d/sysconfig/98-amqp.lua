@@ -6,8 +6,8 @@ local CONFIG = ngx.shared.config
 
 function _M.config()
   CONFIG:set("amqp.async_queue_size", 2000)
-  CONFIG:set("amqp.publisher_pool_size", 5)
-  CONFIG:set("amqp.publisher_timeout", 1)
+  CONFIG:set("amqp.pool_size", 5)
+  CONFIG:set("amqp.timeout", 5)
   CONFIG:set("amqp.host", "192.168.2.12")
   CONFIG:set("amqp.port", 5672)
   CONFIG:set("amqp.user", "root")
