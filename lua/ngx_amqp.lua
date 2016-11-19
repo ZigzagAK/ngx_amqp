@@ -17,8 +17,9 @@ _M.connect_options = {
   vhost        = CONFIG:get("amqp.vhost"),
 --no_wait      = CONFIG:get("amqp.no_wait"),
   no_wait      = true,
-  conn_timeout = CONFIG:get("amqp.conn_timeout"),
-  read_timeout = CONFIG:get("amqp.read_timeout"),
+  heartbeat    = CONFIG:get("amqp.heartbeat") or 30,
+  conn_timeout = CONFIG:get("amqp.conn_timeout") or 30,
+  read_timeout = CONFIG:get("amqp.read_timeout") or 30,
 }
 
 local pool_size        = CONFIG:get("amqp.pool_size")        or 1
@@ -56,6 +57,7 @@ local function amqp_connect(opts)
     no_wait         = opts.no_wait,
     connect_timeout = opts.conn_timeout * 1000,
     read_timeout    = opts.read_timeout * 1000,
+    heartbeat       = opts.heartbeat,
   }
   if not ctx then
     return false, nil, "failed to create context"
