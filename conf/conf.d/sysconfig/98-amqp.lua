@@ -6,7 +6,7 @@ local CONFIG = ngx.shared.config
 
 function _M.config()
   CONFIG:set("amqp.async_queue_size", 2000)
-  CONFIG:set("amqp.pool_size", 20)
+  CONFIG:set("amqp.pool_size", 10)
   CONFIG:set("amqp.timeout", 5)
   CONFIG:set("amqp.retry", 3)
   CONFIG:set("amqp.host", "127.0.0.1")
@@ -17,7 +17,8 @@ function _M.config()
   CONFIG:set("amqp.ssl", false)
   CONFIG:set("amqp.trace_ddl", true)
   CONFIG:set("amqp.trace_publish", false)
-  CONFIG:set("amqp.no_wait", false)
+  CONFIG:set("amqp.conn_timeout", 5)
+  CONFIG:set("amqp.read_timeout", 5)
 end
 
 return _M
