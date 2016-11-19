@@ -75,8 +75,8 @@ local function amqp_connect(opts)
     return false, nil, err
   end
 
-  ctx.opts.add = opts
-  ngx.log(ngx.INFO, "AMQP connected, endpoint=" .. key_fn(ctx.opts.add))
+  ctx.opts.ext = opts
+  ngx.log(ngx.INFO, "AMQP connected, endpoint=" .. key_fn(ctx.opts.ext))
 
   return true, ctx, nil
 end
@@ -87,7 +87,7 @@ local function amqp_disconnect(ctx)
       ctx:teardown()
     end
     ctx:close()
-    ngx.log(ngx.INFO, "AMQP disconnected, endpoint=" .. key_fn(ctx.opts.add))
+    ngx.log(ngx.INFO, "AMQP disconnected, endpoint=" .. key_fn(ctx.opts.ext))
   end
 end
 
@@ -385,11 +385,11 @@ amqp_worker = {
     end
 
     local function amqp_pool(amqp_conn)
+      local ok, err
+      
       amqp_conn.ctx.sock:settimeout(10)
-
-      local ok, err = consume(amqp_conn)
-
-      amqp_conn.ctx.sock:settimeout(_M.connect_options.read_timeout)
+      ok, err = consume(amqp_conn)
+      amqp_conn.ctx.sock:settimeout(amqp_conn.ctx.opts.ext.read_timeout)
 
       if ok then
         ok, err = try_send_heartbeat(amqp_conn)
@@ -732,11 +732,10 @@ function _M.info()
   r.queue_size = AMQP:get("amqp_worker.queue") or 0
   r.publishers = {}
 
-  for _, thread in pairs(amqp_worker.pool)
+  for _, key in pairs(AMQP:get_keys())
   do
-    for endpoint, _ in pairs(thread.cache)
-    do
-      r.publishers[endpoint] = AMQP:get(endpoint)
+    if key:match("^.+@.+:[0-9]+:.+$") then
+      r.publishers[key] = AMQP:get(key)
     end
   end
 
