@@ -385,7 +385,7 @@ amqp_worker = {
     end
 
     local function amqp_pool(amqp_conn)
-      amqp_conn.ctx.sock:settimeout(100)
+      amqp_conn.ctx.sock:settimeout(10)
 
       local ok, err = consume(amqp_conn)
 
@@ -414,9 +414,11 @@ amqp_worker = {
           break
         end
 
+        local ok, err
+
         for key, amqp_conn in pairs(cache)
         do
-          local ok, err = amqp_pool(amqp_conn)
+          ok, err = amqp_pool(amqp_conn)
           if not ok then
             ngx.log(ngx.ERR, "#" .. num .. " AMQP error: " .. error_string(err))
             amqp_disconnect(amqp_conn.ctx)
@@ -424,7 +426,9 @@ amqp_worker = {
           end
         end
 
-        ngx.sleep(0.01)
+        if not ok then
+          ngx.sleep(0.01)
+        end
 
         goto continue
       end
