@@ -6,6 +6,7 @@ local amqp  = require "amqp"
 local cjson = require "cjson"
 
 local CONFIG = ngx.shared.config
+local AMQP   = ngx.shared.amqp
 
 _M.connect_options = {
   host     = CONFIG:get("amqp.host"),
@@ -259,6 +260,19 @@ amqp_worker = {
   queue = {},
   pool = {},
 
+  queue_add = function(req)
+    table.insert(amqp_worker.queue, req)
+    AMQP:incr("amqp_worker.queue", 1, 0)
+  end,
+
+  queue_get = function()
+    local req = table.remove(amqp_worker.queue)
+    if req then
+      AMQP:incr("amqp_worker.queue", -1)
+    end
+    return req
+  end,
+  
   thread_func = function(cache, num)
     ngx.log(ngx.INFO, "AMQP worker #" .. num .. " has been started")
 
@@ -270,7 +284,7 @@ amqp_worker = {
 :: continue ::
       yield(self)
 
-      local req = table.remove(amqp_worker.queue)
+      local req = amqp_worker.queue_get()
 
       if not req then
         if ngx.worker.exiting() then
@@ -281,8 +295,6 @@ amqp_worker = {
 
         goto continue
       end
-
-      CONFIG:incr("amqp_worker.queue", -1)
 
       local ok, err
 
@@ -302,7 +314,7 @@ amqp_worker = {
           ok, ctx, err = amqp_connect(req.opts)
           if ok then
             cache[key] = ctx
-            CONFIG:incr(key, 1, 0)
+            AMQP:incr(key, 1, 0)
           else
             ngx.log(ngx.ERR, "AMQP connect: " .. err)
           end
@@ -347,7 +359,7 @@ amqp_worker = {
         if not ok then
           amqp_disconnect(ctx)
           cache[key] = nil
-          CONFIG:incr(key, -1)
+          AMQP:incr(key, -1)
         end
 
         if ok then
@@ -363,7 +375,7 @@ amqp_worker = {
     do
       amqp_disconnect(ctx)
       cache[key] = nil
-      CONFIG:incr(key, -1)
+      AMQP:incr(key, -1)
     end
 
     ngx.log(ngx.INFO, "AMQP worker #" .. num .. " has been stopped")
@@ -387,16 +399,15 @@ amqp_worker = {
 }
 
 local function wait_queue()
-  local totime = ngx.now() + timeout
-  local queue_size = CONFIG:get("amqp_worker.queue") or 0
+  local to = ngx.now() + timeout
+  local queue_size = AMQP:get("amqp_worker.queue") or 0
   local remain = timeout
 
   while queue_size >= async_queue_size and remain > 0
   do
-    ngx.log(ngx.WARN, "AMQP throotled")
     ngx.sleep(0.01)
-    queue_size = CONFIG:get("amqp_worker.queue")
-    remain = totime - ngx.now()
+    queue_size = AMQP:get("amqp_worker.queue")
+    remain = to - ngx.now()
   end
 
   if remain <= 0 then
@@ -407,9 +418,11 @@ local function wait_queue()
 end
 
 local function wait(req, timeout)
-  local totime = ngx.now() + timeout
+  local to = ngx.now() + timeout
 
-  while not req.ready and ngx.now() < totime
+  amqp_worker.queue_add(req)
+  
+  while not req.ready and ngx.now() < to
   do
     ngx.sleep(0.001)
   end
@@ -436,10 +449,6 @@ function _M.exchange_declare(exchange, options)
   
   req.exch.declare = true
 
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
-
   return wait(req, remain)
 end
 
@@ -454,10 +463,6 @@ function _M.queue_declare(q, options)
     opts  = options or _M.connect_options,
     queue = q
   }
-
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
 
   return wait(req, remain)
 end
@@ -474,10 +479,6 @@ function _M.queue_bind(b, options)
     bind = b
   }
 
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
-
   return wait(req, remain)
 end
 
@@ -492,10 +493,6 @@ function _M.queue_unbind(ub, options)
     opts = options or _M.connect_options,
     unbind = ub
   }
-
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
 
   return wait(req, remain)
 end
@@ -512,10 +509,6 @@ function _M.exchange_bind(eb, options)
     ebind = eb
   }
 
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
-
   return wait(req, remain)
 end
 
@@ -530,10 +523,6 @@ function _M.exchange_unbind(eub, options)
     opts = options or _M.connect_options,
     eunbind = eub
   }
-
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
 
   return wait(req, remain)
 end
@@ -550,10 +539,6 @@ function _M.exchange_delete(ed, options)
     edelete = ed
   }
 
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
-
   return wait(req, remain)
 end
 
@@ -568,10 +553,6 @@ function _M.queue_delete(qd, options)
     opts = options or _M.connect_options,
     qdelete = qd
   }
-
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
 
   return wait(req, remain)
 end
@@ -589,11 +570,8 @@ function _M.publish(exchange, message, async, options)
     mesg = message,
   }
 
-  table.insert(amqp_worker.queue, req)
-
-  CONFIG:incr("amqp_worker.queue", 1, 0)
-
   if async then
+    amqp_worker.queue_add(req)
     return true, nil
   end
 
@@ -610,14 +588,14 @@ end
 function _M.info()
   local r = {}
 
-  r.queue_size = CONFIG:get("amqp_worker.queue") or 0
+  r.queue_size = AMQP:get("amqp_worker.queue") or 0
   r.publishers = {}
 
   for _, thread in pairs(amqp_worker.pool)
   do
     for endpoint, _ in pairs(thread.cache)
     do
-      r.publishers[endpoint] = CONFIG:get(endpoint)
+      r.publishers[endpoint] = AMQP:get(endpoint)
     end
   end
 
