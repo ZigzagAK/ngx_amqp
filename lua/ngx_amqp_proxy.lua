@@ -64,7 +64,13 @@ function _M.proxy()
     local dml_ops = {
       [c.class.BASIC] = true
     }
-    
+
+    local vhost, user
+
+    local ident = function()
+      return (user or "none") .. ":" .. (vhost or "none")
+    end
+
     local thr_func = function(ctx)
       while not ctx.err or ctx.err == "timeout"
       do
@@ -74,7 +80,12 @@ function _M.proxy()
         if f then
           local is_dml = dml_ops[f.class_id] or f.type == c.frame.BODY_FRAME
           if (trace_dml and is_dml) or (trace_ddl and not is_dml) then
-            ngx.log(ngx.INFO, "amqp " .. ctx.desc .. " : " .. cjson.encode(f))
+            ngx.log(ngx.INFO, "amqp [" .. ident() .. "] : " .. ctx.desc .. " : " .. cjson.encode(f))
+          end
+          if not user and f.method_id == c.method.connection.START_OK then
+            user = f.method.response:match("(%w+)")
+          elseif not vhost and f.method_id == c.method.connection.OPEN then
+            vhost = f.method.virtual_host
           end
         elseif err then
           if err == "closed" then
