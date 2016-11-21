@@ -18,7 +18,14 @@ function _M.proxy()
     local sock_down = ngx.req.socket()
     local sock_up = ngx.socket.tcp()
 
-    local ok, err = sock_up:connect(upstream_host, upstream_port)
+    local ok, err
+    
+    if upstream_host:match("^unix:") then
+      ok, err = sock_up:connect(upstream_host)
+    else
+      ok, err = sock_up:connect(upstream_host, upstream_port)
+    end
+
     if not ok then
       ngx.log(ngx.ERR, "failed to connect: ", err)
       return
