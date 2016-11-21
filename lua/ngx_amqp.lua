@@ -299,7 +299,7 @@ amqp_worker = {
     local function try_send_heartbeat(amqp_conn)
       local now = ngx.now()
 
-      if now - amqp_conn.hb.last < c.DEFAULT_HEARTBEAT then
+      if now - amqp_conn.hb.last < amqp_conn.ctx.opts.ext.heartbeat then
         return true, nil
       end
 
