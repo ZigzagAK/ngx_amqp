@@ -58,8 +58,8 @@ function _M.proxy()
     setmetatable(request, mt)
     setmetatable(response, mt)
 
-    sock_up:settimeout(100)
-    sock_down:settimeout(100)
+    sock_up:settimeout(1000)
+    sock_down:settimeout(1000)
 
     local dml_ops = {
       [c.class.BASIC] = true
