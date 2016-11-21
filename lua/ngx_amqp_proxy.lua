@@ -34,15 +34,16 @@ function _M.proxy()
     local mt = { __index = {
       receive = function(self, size)
         local data
-        self.where = "on recv"
         data, self.err = self.from:receive(size)
         if data then
           local bytes
-          self.where = "on send"
           bytes, self.err = self.to:send(data)
           if not bytes then
+            self.where = "on send"
             return nil, self.err
           end
+        else
+          self.where = "on recv"
         end
         return data, self.err
       end
