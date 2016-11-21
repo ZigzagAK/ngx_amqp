@@ -6,41 +6,22 @@ local frame = require "frame"
 local c     = require "consts"
 local cjson = require "cjson"
 
+local CONFIG = ngx.shared.config_s
+
+local upstream_host = CONFIG:get("amqp_proxy.upstream_host")
+local upstream_port = CONFIG:get("amqp_proxy.upstream_port") or 5672
+
+local trace_ddl = CONFIG:get("amqp_proxy.trace_ddl") or true
+local trace_dml = CONFIG:get("amqp_proxy.trace_dml") or false
+
 function _M.proxy()
-    --local upstream = require "ngx.upstream"
-
-
-    --[[local servers = upstream.get_servers("amqp")
-    if not servers then
-      ngx.log(ngx.ERR, "No amqp upstream")
-      ngx.exit(444)
-    end
-
-    local server;
-    for _, peer in pairs(servers)
-    do
-      if not peer.down then
-        server = x
-        break
-      end
-    end
-
-    if not server then
-      ngx.log(ngx.ERR, "No alive server available")
-      ngx.exit(444)
-    end--]]
-    
-    local server = "192.168.2.12:5672"
-
-    local host, port = server:match("^([^:]+):([0-9]+)$")
-
     local sock_down = ngx.req.socket()
     local sock_up = ngx.socket.tcp()
 
-    local ok, err = sock_up:connect(host, tonumber(port))
+    local ok, err = sock_up:connect(upstream_host, upstream_port)
     if not ok then
       ngx.log(ngx.ERR, "failed to connect: ", err)
-      ngx.exit(444)
+      return
     end
 
     local mt = { __index = {
@@ -72,6 +53,10 @@ function _M.proxy()
 
     sock_up:settimeout(100)
     sock_down:settimeout(100)
+
+    local dml_ops = {
+      [c.class.BASIC] = true
+    }
     
     local thr_func = function(ctx)
       while not ctx.err or ctx.err == "timeout"
@@ -80,7 +65,10 @@ function _M.proxy()
           sock = ctx.sock
         } )
         if f then
-          ngx.log(ngx.INFO, "amqp " .. ctx.desc .. " : " .. cjson.encode(f))
+          local is_dml = dml_ops[f.class_id] or f.type == c.frame.BODY_FRAME
+          if (trace_dml and is_dml) or (trace_ddl and not is_dml) then
+            ngx.log(ngx.INFO, "amqp " .. ctx.desc .. " : " .. cjson.encode(f))
+          end
         elseif err and err ~= "timeout" then
           ngx.log(ngx.WARN, "amqp " .. ctx.desc .. " : " .. (err or "?"))
         end
@@ -90,7 +78,7 @@ function _M.proxy()
     local thr_up = ngx.thread.spawn(thr_func, { sock = request, desc = "request" })
     local thr_down = ngx.thread.spawn(thr_func, { sock = response, desc = "response" })
 
-    local ok, err = ngx.thread.wait(thr_up, thr_down)
+    ok, err = ngx.thread.wait(thr_up, thr_down)
     if not ok then
       ngx.log(ngx.ERR, "failed to wait: " .. err)
     end

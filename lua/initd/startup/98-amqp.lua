@@ -1,5 +1,6 @@
 local _M = {
-  _VERSION = "1.0.0"
+  _VERSION = "1.0.0",
+  _MODULE_TYPE = "http"
 }
 
 local amqp = require "ngx_amqp"
