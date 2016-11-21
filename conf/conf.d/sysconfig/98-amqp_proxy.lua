@@ -6,10 +6,10 @@ local _M = {
 local CONFIG = ngx.shared.config_s
 
 function _M.config()
-  CONFIG:set("amqp_proxy.upstream_host", "192.168.2.12")
-  CONFIG:set("amqp_proxy.upstream_port", 5672)
+  CONFIG:set("amqp_proxy.upstream_host", "127.0.0.1")
+  CONFIG:set("amqp_proxy.upstream_port", 5670)
   CONFIG:set("amqp_proxy.trace_ddl", true)
-  CONFIG:set("amqp_proxy.trace_dml", true)
+  CONFIG:set("amqp_proxy.trace_dml", false)
 end
 
 return _M

@@ -69,9 +69,15 @@ function _M.proxy()
           if (trace_dml and is_dml) or (trace_ddl and not is_dml) then
             ngx.log(ngx.INFO, "amqp " .. ctx.desc .. " : " .. cjson.encode(f))
           end
-        elseif err and err ~= "timeout" then
+        elseif err then
+          if err == "closed" then
+            break
+          elseif err == "timeout" then
+            goto continue
+          end
           ngx.log(ngx.WARN, "amqp " .. ctx.desc .. " : " .. (err or "?"))
         end
+::continue::
       end
     end
 
