@@ -34,9 +34,11 @@ function _M.proxy()
     local mt = { __index = {
       receive = function(self, size)
         local data
+        self.where = "on recv"
         data, self.err = self.from:receive(size)
         if data then
           local bytes
+          self.where = "on send"
           bytes, self.err = self.to:send(data)
           if not bytes then
             return nil, self.err
@@ -72,7 +74,7 @@ function _M.proxy()
     end
 
     local thr_func = function(ctx)
-      while not ctx.err or ctx.err == "timeout"
+      while not ctx.sock.err or ctx.sock.err == "timeout"
       do
         local f, err = frame.consume_frame( {
           sock = ctx.sock
@@ -89,6 +91,7 @@ function _M.proxy()
           end
         elseif err then
           if err == "closed" then
+            ngx.log(ngx.WARN, "amqp [" .. ident() .. "] : " .. ctx.desc .. " : connection closed " .. ctx.sock.where)
             break
           elseif err == "timeout" then
             goto continue
@@ -99,8 +102,8 @@ function _M.proxy()
       end
     end
 
-    local thr_up = ngx.thread.spawn(thr_func, { sock = request, desc = "request" })
-    local thr_down = ngx.thread.spawn(thr_func, { sock = response, desc = "response" })
+    local thr_up = ngx.thread.spawn(thr_func, { sock = request, desc = "client -> server" })
+    local thr_down = ngx.thread.spawn(thr_func, { sock = response, desc = "client <- server" })
 
     ok, err = ngx.thread.wait(thr_up, thr_down)
     if not ok then
