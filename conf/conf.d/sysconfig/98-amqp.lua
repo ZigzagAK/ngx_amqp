@@ -1,5 +1,6 @@
 local _M = {
-  _VERSION = "1.0.0"
+  _VERSION = "1.0.0",
+  _MODULE_TYPE = "http"
 }
 
 local CONFIG = ngx.shared.config
@@ -13,7 +14,7 @@ function _M.config()
   CONFIG:set("amqp.port", 5671)
   CONFIG:set("amqp.user", "root")
   CONFIG:set("amqp.password", "1111")
-  CONFIG:set("amqp.vhost", "/")
+  CONFIG:set("amqp.vhost", "test")
   CONFIG:set("amqp.ssl", false)
   CONFIG:set("amqp.trace_ddl", true)
   CONFIG:set("amqp.trace_publish", false)
