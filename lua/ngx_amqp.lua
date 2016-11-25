@@ -256,10 +256,12 @@ local function amqp_queue_delete(ctx, req)
 end
 
 local function amqp_publish_message(ctx, req)
-  local ok, err = ctx:publish(req.mesg, req.exch)
+  local ok, err = ctx:publish(req.mesg, req.exch, req.props)
 
   if trace_publish then
-    ngx.log(ngx.INFO, "AMQP publish: endpoint=" .. key_fn(req.opts) .. ", exchange=" .. cjson.encode(req.exch) .. ", message=" .. req.mesg or "")
+    ngx.log(ngx.INFO, "AMQP publish: endpoint=" .. key_fn(req.opts) ..
+                      ", exchange=" .. cjson.encode(req.exch) .. ", message=" .. (req.mesg or "") ..
+                      ", properties = " .. cjson.encode(req.props))
   end
 
   if not ok then
@@ -706,7 +708,7 @@ function _M.queue_delete(qd, options)
   return wait(req, remain)
 end
 
-function _M.publish(exchange, message, async, options)
+function _M.publish(exchange, message, async, properties, options)
   local remain, err = wait_queue()
 
   if remain == 0 then
@@ -714,9 +716,10 @@ function _M.publish(exchange, message, async, options)
   end
 
   local req = {
-    opts = options or _M.connect_options,
-    exch = exchange,
-    mesg = message,
+    opts  = options or _M.connect_options,
+    exch  = exchange,
+    mesg  = message,
+    props = properties
   }
 
   if async then

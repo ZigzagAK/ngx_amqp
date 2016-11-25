@@ -9,7 +9,7 @@ function _M.config()
   CONFIG:set("amqp_proxy.upstream_host", "unix:/tmp/nginx.amqp.sock")
   CONFIG:set("amqp_proxy.upstream_port", nil)
   CONFIG:set("amqp_proxy.trace_ddl", true)
-  CONFIG:set("amqp_proxy.trace_dml", false)
+  CONFIG:set("amqp_proxy.trace_dml", true)
 end
 
 return _M
