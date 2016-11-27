@@ -217,7 +217,10 @@ function install_resty_module() {
   fi
   echo "Install $2/$3"
   unzip -q $2-$5.zip
-  cp -r $2-$5/$3 "$INSTALL_PREFIX/nginx-$VERSION-amqp/$4"
+  if [ ! -e "$INSTALL_PREFIX/nginx-$VERSION-sd/$4" ]; then
+    mkdir -p "$INSTALL_PREFIX/nginx-$VERSION-sd/$4"
+  fi
+  cp -r $2-$5/$3 "$INSTALL_PREFIX/nginx-$VERSION-sd/$4/"
   rm -rf $2-$5
 }
 
@@ -231,16 +234,16 @@ function install_lua_modules() {
 
   cd download/lua_modules
 
-  install_resty_module openresty    lua-resty-lock                      lib                 .         master $download
-  install_resty_module openresty    lua-resty-core                      lib                 .         master $download
-  install_resty_module ZigzagAK     amqp                                lib                 .         master $download
+  install_resty_module openresty    lua-resty-lock                      lib                 .           master $download
+  install_resty_module openresty    lua-resty-core                      lib                 .           master $download
+  install_resty_module ZigzagAK     amqp                                lib                 .           master $download
 
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/start.sh    .         master $download
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/stop.sh     .         master 0
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/debug.sh    .         master 0
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/restart.sh  .         master 0
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/system.lua      lua       master 0
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/initd/init.lua  lua/initd master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/start.sh    .           master $download
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/stop.sh     .           master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/debug.sh    .           master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/restart.sh  .           master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/system.lua      lua         master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/initd/init.lua  lua/initd   master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/init    conf/conf.d master 0
 
   cd ../..
