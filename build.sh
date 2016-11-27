@@ -208,14 +208,17 @@ download
 build
 
 function install_resty_module() {
-  if [ $download -eq 1 ]; then
+  if [ $5 -eq 1 ]; then
     echo "Download $2"
     rm -rf $2-$4 2>/dev/null
     curl -s -L -O https://github.com/$1/$2/archive/$4.zip
     mv $4.zip $2-$4.zip
   fi
-  echo "Install $2"
+  echo "Install $2/$3"
   unzip -q $2-$4.zip
+  if [ ! -e "$INSTALL_PREFIX/nginx-$VERSION-amqp/$3" ]; then
+    mkdir -p "$INSTALL_PREFIX/nginx-$VERSION-amqp/$3"
+  fi
   cp -r $2-$4/$3/* "$INSTALL_PREFIX/nginx-$VERSION-amqp/$3/"
   rm -rf $2-$4
 }
@@ -226,10 +229,11 @@ function install_lua_modules() {
   fi
   cd download/lua_modules
 
-  install_resty_module openresty    lua-resty-lock                      lib master
-  install_resty_module openresty    lua-resty-core                      lib master
-  install_resty_module ZigzagAK     amqp                                lib master
-  install_resty_module ZigzagAK     ngx_amqp                            .   master
+  install_resty_module openresty    lua-resty-lock                      lib  master $download
+  install_resty_module openresty    lua-resty-core                      lib  master $download
+  install_resty_module ZigzagAK     amqp                                lib  master $download
+  install_resty_module ZigzagAK     ngx_amqp                            lua  master $download
+  install_resty_module ZigzagAK     ngx_amqp                            conf master 0
 
   cd ../..
 }
