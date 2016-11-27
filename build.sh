@@ -67,6 +67,7 @@ function build_debug() {
     ./configure --prefix="$INSTALL_PREFIX/nginx-$VERSION-amqp" \
                 --with-stream \
                 --with-debug \
+                --with-cc-opt="-O0" \
                 --add-module=../ngx_devel_kit \
                 --add-module=../lua-nginx-module \
                 --add-module=../stream-lua-nginx-module > /dev/null
