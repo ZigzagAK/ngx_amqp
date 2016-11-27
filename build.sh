@@ -154,6 +154,7 @@ function download() {
   fi
 
   mkdir build                2>/dev/null
+  mkdir build/debug          2>/dev/null
   mkdir build/deps           2>/dev/null
 
   mkdir download             2>/dev/null
@@ -199,7 +200,6 @@ function build() {
   pcrelib=$(ldd "$INSTALL_PREFIX/nginx-$VERSION-amqp/sbin/nginx" | grep pcre | awk '{print $3}')
   cp $pcrelib "$INSTALL_PREFIX/nginx-$VERSION-amqp/lib"
   cp lua-cjson/cjson.so "$INSTALL_PREFIX/nginx-$VERSION-amqp/lib/lua/5.1"
-  cp ../scripts/* "$INSTALL_PREFIX/nginx-$VERSION-amqp"
 
   cd ..
 }
@@ -209,32 +209,39 @@ download
 build
 
 function install_resty_module() {
-  if [ $5 -eq 1 ]; then
+  if [ $6 -eq 1 ]; then
     echo "Download $2"
-    rm -rf $2-$4 2>/dev/null
-    curl -s -L -O https://github.com/$1/$2/archive/$4.zip
-    mv $4.zip $2-$4.zip
+    rm -rf $2-$5 2>/dev/null
+    curl -s -L -O https://github.com/$1/$2/archive/$5.zip
+    mv $5.zip $2-$5.zip
   fi
   echo "Install $2/$3"
-  unzip -q $2-$4.zip
-  if [ ! -e "$INSTALL_PREFIX/nginx-$VERSION-amqp/$3" ]; then
-    mkdir -p "$INSTALL_PREFIX/nginx-$VERSION-amqp/$3"
-  fi
-  cp -r $2-$4/$3/* "$INSTALL_PREFIX/nginx-$VERSION-amqp/$3/"
-  rm -rf $2-$4
+  unzip -q $2-$5.zip
+  cp -r $2-$5/$3 "$INSTALL_PREFIX/nginx-$VERSION-amqp/$4"
+  rm -rf $2-$5
 }
+
 
 function install_lua_modules() {
   if [ $download -eq 1 ]; then
     rm -rf download/lua_modules/* 2>/dev/null
   fi
+
+  cp -r lua conf "$INSTALL_PREFIX/nginx-$VERSION-amqp"
+
   cd download/lua_modules
 
-  install_resty_module openresty    lua-resty-lock                      lib  master $download
-  install_resty_module openresty    lua-resty-core                      lib  master $download
-  install_resty_module ZigzagAK     amqp                                lib  master $download
-  install_resty_module ZigzagAK     ngx_amqp                            lua  master $download
-  install_resty_module ZigzagAK     ngx_amqp                            conf master 0
+  install_resty_module openresty    lua-resty-lock                      lib                 .         master $download
+  install_resty_module openresty    lua-resty-core                      lib                 .         master $download
+  install_resty_module ZigzagAK     amqp                                lib                 .         master $download
+
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/start.sh    .         master $download
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/stop.sh     .         master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/debug.sh    .         master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/restart.sh  .         master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/system.lua      lua       master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/initd/init.lua  lua/initd master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/init    conf/conf.d master 0
 
   cd ../..
 }
@@ -249,6 +256,6 @@ kernel_name=$(uname -s)
 kernel_version=$(uname -r)
 
 cd install
-tar zcvf nginx-$VERSION-amqp-$kernel_name-$kernel_version.tar.gz "nginx-$VERSION-amqp"
+tar zcvf nginx-$VERSION-amqp-$kernel_name-$kernel_version.tar.gz nginx-$VERSION-amqp
 rm -rf nginx-$VERSION-amqp
 cd ..
