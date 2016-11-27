@@ -244,6 +244,6 @@ kernel_name=$(uname -s)
 kernel_version=$(uname -r)
 
 cd install
-tar zcf nginx-$VERSION-amqp-$kernel_name-$kernel_version.tar.gz "nginx-$VERSION-amqp"
+tar zcvf nginx-$VERSION-amqp-$kernel_name-$kernel_version.tar.gz "nginx-$VERSION-amqp"
 rm -rf nginx-$VERSION-amqp
 cd ..
