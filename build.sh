@@ -3,7 +3,10 @@
 # Copyright, Aleksey Konovkin (alkon2000@mail.ru)
 # BSD license type
 
-download=1
+download=0
+if [ "$1" == "1" ]; then
+  download=1
+fi
 build_deps=1
 build_debug=1
 build_release=1
