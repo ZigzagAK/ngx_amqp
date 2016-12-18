@@ -75,6 +75,8 @@ function build_debug() {
               --with-cc-opt="-O0" \
               --add-module=../ngx_devel_kit \
               --add-module=../lua-nginx-module \
+              --add-module=../ngx_dynamic_upstream \
+              --add-module=../ngx_dynamic_upstream_lua \
               --add-module=../stream-lua-nginx-module > /dev/null
 
   r=$?
@@ -103,6 +105,8 @@ function build_release() {
               --with-stream \
               --add-module=../ngx_devel_kit \
               --add-module=../lua-nginx-module \
+              --add-module=../ngx_dynamic_upstream \
+              --add-module=../ngx_dynamic_upstream_lua \
               --add-module=../stream-lua-nginx-module > /dev/null
 
   r=$?
@@ -194,6 +198,8 @@ function download() {
   download_luajit
   download_pcre
 
+  download_module ZigzagAK    ngx_dynamic_upstream             master
+  download_module ZigzagAK    ngx_dynamic_upstream_lua         master
   download_module simpl       ngx_devel_kit                    master
   download_module openresty   lua-nginx-module                 master
   download_module ZigzagAK    stream-lua-nginx-module          fix-compile-1.11.4

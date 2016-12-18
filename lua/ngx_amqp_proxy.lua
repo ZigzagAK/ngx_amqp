@@ -8,22 +8,19 @@ local cjson = require "cjson"
 
 local CONFIG = ngx.shared.config_s
 
-local upstream_host = CONFIG:get("amqp_proxy.upstream_host")
-local upstream_port = CONFIG:get("amqp_proxy.upstream_port") or 5672
-
 local trace_ddl = CONFIG:get("amqp_proxy.trace_ddl") or true
 local trace_dml = CONFIG:get("amqp_proxy.trace_dml") or false
 
-function _M.proxy()
+function _M.proxy(upstream)
     local sock_down = ngx.req.socket()
     local sock_up = ngx.socket.tcp()
 
     local ok, err
-    
-    if upstream_host:match("^unix:") then
-      ok, err = sock_up:connect(upstream_host)
+
+    if upstream.host:match("^unix:") then
+      ok, err = sock_up:connect(upstream.host)
     else
-      ok, err = sock_up:connect(upstream_host, upstream_port)
+      ok, err = sock_up:connect(upstream.host, upstream.port)
     end
 
     if not ok then
