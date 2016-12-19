@@ -12,7 +12,7 @@ All dependencies are downloaded automaticaly.
 Pre requirenments (for example centos/redhat)
 
 ```
-sudo yum gcc-c++.x86_64 zlib-devel openssl-devel
+sudo yum install gcc-c++.x86_64 zlib-devel openssl-devel
 ```
 
 Build

@@ -1,6 +1,11 @@
 nginx-1.11.6-amqp/
 nginx-1.11.6-amqp/conf/
 nginx-1.11.6-amqp/conf/conf.d/
+nginx-1.11.6-amqp/conf/conf.d/healthcheck/
+nginx-1.11.6-amqp/conf/conf.d/healthcheck.conf
+nginx-1.11.6-amqp/conf/conf.d/healthcheck/healthcheck.conf
+nginx-1.11.6-amqp/conf/conf.d/healthcheck/javascript/
+nginx-1.11.6-amqp/conf/conf.d/healthcheck/javascript/jquery-1.9.1.js
 nginx-1.11.6-amqp/conf/conf.d/init/
 nginx-1.11.6-amqp/conf/conf.d/init/http.conf
 nginx-1.11.6-amqp/conf/conf.d/init/stream.conf
@@ -13,7 +18,9 @@ nginx-1.11.6-amqp/conf/conf.d/other/upstream/stream/amqp_proxy.conf
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/98-amqp.lua
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/98-amqp_proxy.lua
+nginx-1.11.6-amqp/conf/conf.d/sysconfig/99-healthcheck.lua
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/amqp.ini
+nginx-1.11.6-amqp/conf/conf.d/sysconfig/healthcheck.ini
 nginx-1.11.6-amqp/conf/fastcgi.conf
 nginx-1.11.6-amqp/conf/fastcgi.conf.default
 nginx-1.11.6-amqp/conf/fastcgi_params
@@ -80,7 +87,15 @@ nginx-1.11.6-amqp/lib/resty/core/time.lua
 nginx-1.11.6-amqp/lib/resty/core/uri.lua
 nginx-1.11.6-amqp/lib/resty/core/var.lua
 nginx-1.11.6-amqp/lib/resty/core/worker.lua
+nginx-1.11.6-amqp/lib/resty/http_headers.lua
+nginx-1.11.6-amqp/lib/resty/http.lua
 nginx-1.11.6-amqp/lib/resty/lock.lua
+nginx-1.11.6-amqp/lib/resty/upstream/
+nginx-1.11.6-amqp/lib/resty/upstream/dynamic/
+nginx-1.11.6-amqp/lib/resty/upstream/dynamic/healthcheck/
+nginx-1.11.6-amqp/lib/resty/upstream/dynamic/healthcheck/common.lua
+nginx-1.11.6-amqp/lib/resty/upstream/dynamic/healthcheck/http.lua
+nginx-1.11.6-amqp/lib/resty/upstream/dynamic/healthcheck/stream.lua
 nginx-1.11.6-amqp/LICENSE
 nginx-1.11.6-amqp/logs/
 nginx-1.11.6-amqp/lua/
@@ -88,6 +103,7 @@ nginx-1.11.6-amqp/lua/initd/
 nginx-1.11.6-amqp/lua/initd/init.lua
 nginx-1.11.6-amqp/lua/initd/startup/
 nginx-1.11.6-amqp/lua/initd/startup/98-amqp.lua
+nginx-1.11.6-amqp/lua/initd/startup/99-healthcheck.lua
 nginx-1.11.6-amqp/lua/ngx_amqp.lua
 nginx-1.11.6-amqp/lua/ngx_amqp_proxy.lua
 nginx-1.11.6-amqp/lua/system.lua
