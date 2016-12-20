@@ -8,7 +8,10 @@ local cjson = require "cjson"
 
 local CONFIG = ngx.shared.config_s
 
-local trace_ddl = CONFIG:get("amqp_proxy.trace_ddl") or true
+local trace_ddl = CONFIG:get("amqp_proxy.trace_ddl")
+if trace_ddl == nil then
+    trace_ddl = true
+end
 local trace_dml = CONFIG:get("amqp_proxy.trace_dml") or false
 
 function _M.proxy(upstream)
