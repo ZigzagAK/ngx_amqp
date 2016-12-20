@@ -25,7 +25,10 @@ _M.connect_options = {
 local pool_size        = CONFIG:get("amqp.pool_size")        or 1
 local async_queue_size = CONFIG:get("amqp.async_queue_size") or 100
 local timeout          = CONFIG:get("amqp.timeout")          or 5
-local trace_ddl        = CONFIG:get("amqp.trace_ddl")        or true
+local trace_ddl        = CONFIG:get("amqp.trace_ddl")
+if trace_ddl == nil then
+  trace_ddl = true
+end
 local trace_publish    = CONFIG:get("amqp.trace_publish")    or false
 local retry            = CONFIG:get("amqp.retry")            or 3
 
