@@ -33,7 +33,7 @@ local trace_publish    = CONFIG:get("amqp.trace_publish")    or false
 local retry            = CONFIG:get("amqp.retry")            or 3
 
 local function key_fn(o)
-  return o.user .. "@" .. o.host .. ":" .. o.port .. ":" .. o.vhost
+  return o.user .. "@" .. o.host .. ":" .. (o.port or "domain").. ":" .. o.vhost
 end
 
 local function error_string(e)
@@ -66,7 +66,12 @@ local function amqp_connect(opts)
     return false, nil, "failed to create context"
   end
 
-  local ok, err = ctx:connect(opts.host, opts.port)
+  local ok, err
+  if opts.port then
+    ok, err = ctx:connect(opts.host, opts.port)
+  else
+    ok, err = ctx:connect(opts.host)
+  end
   if not ok then
     return false, nil, err
   end
