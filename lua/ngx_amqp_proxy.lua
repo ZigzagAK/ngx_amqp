@@ -113,7 +113,7 @@ function _M.proxy(upstream)
 
     ngx.thread.kill(thr_up)
     ngx.thread.kill(thr_down)
-  
+
     sock_up:close()
 end
 
