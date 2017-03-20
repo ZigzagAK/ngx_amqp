@@ -201,7 +201,7 @@ function download() {
   download_module ZigzagAK    ngx_dynamic_upstream             master
   download_module ZigzagAK    ngx_dynamic_upstream_lua         master
   download_module simpl       ngx_devel_kit                    master
-  download_module openresty   lua-nginx-module                 master
+  download_module ZigzagAK    lua-nginx-module                 mixed
   download_module ZigzagAK    stream-lua-nginx-module          fix-compile-1.11.4
   download_module openresty   lua-cjson                        master
 
@@ -317,6 +317,11 @@ function install_lua_modules() {
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/healthcheck.conf              conf/conf.d           master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/sysconfig/99-healthcheck.lua  conf/conf.d/sysconfig master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/sysconfig/healthcheck.ini     conf/conf.d/sysconfig master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/lastlog                       conf/conf.d           master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/lastlog.conf                  conf/conf.d           master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/shdict.lua                            lua                   master 0
+  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/shdict_ex.lua                         lua                   master 0
+
 
   cd ../..
 
