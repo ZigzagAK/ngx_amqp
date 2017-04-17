@@ -1,5 +1,5 @@
 local _M = {
-  _VERSION = "1.0.0"
+  _VERSION = "1.1.0"
 }
 
 local frame = require "frame"
@@ -97,7 +97,8 @@ function _M.proxy(upstream)
           elseif err == "timeout" then
             goto continue
           end
-          ngx.log(ngx.WARN, "amqp " .. ctx.desc .. " : " .. (err or "?"))
+          ngx.log(ngx.ERR, "amqp " .. ctx.desc .. " : " .. (err or "?"))
+          break
         end
 ::continue::
       end
