@@ -2,8 +2,6 @@
 
 Nginx AMQP module
 
-[![Build Status](https://drone.io/github.com/ZigzagAK/ngx_amqp//status.png)](https://drone.io/github.com/ZigzagAK/ngx_amqp/latest)
-
 # Install
 
 Build nginx amqp.
@@ -24,6 +22,3 @@ cd ngx_amqp
 ```
 
 Archive will be placed in the `install` folder after successful build.
-
-# Latest build
-  * https://drone.io/github.com/ZigzagAK/ngx_amqp/files
