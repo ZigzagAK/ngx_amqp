@@ -96,6 +96,9 @@ function _M.proxy(upstream)
             break
           elseif err == "timeout" then
             goto continue
+          elseif err == "connect event" then
+            ngx.log(ngx.INFO, "amqp [" .. ident() .. "] : " .. ctx.desc .. " : connected")
+            goto continue
           end
           ngx.log(ngx.ERR, "amqp " .. ctx.desc .. " : " .. (err or "?"))
           break
