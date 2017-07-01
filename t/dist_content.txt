@@ -3,12 +3,17 @@ nginx-1.11.6-amqp/conf/
 nginx-1.11.6-amqp/conf/conf.d/
 nginx-1.11.6-amqp/conf/conf.d/healthcheck/
 nginx-1.11.6-amqp/conf/conf.d/healthcheck.conf
+nginx-1.11.6-amqp/conf/conf.d/healthcheck/dynamic.conf
 nginx-1.11.6-amqp/conf/conf.d/healthcheck/healthcheck.conf
 nginx-1.11.6-amqp/conf/conf.d/healthcheck/javascript/
 nginx-1.11.6-amqp/conf/conf.d/healthcheck/javascript/jquery-1.9.1.js
+nginx-1.11.6-amqp/conf/conf.d/healthcheck/services.conf
 nginx-1.11.6-amqp/conf/conf.d/init/
 nginx-1.11.6-amqp/conf/conf.d/init/http.conf
 nginx-1.11.6-amqp/conf/conf.d/init/stream.conf
+nginx-1.11.6-amqp/conf/conf.d/lastlog/
+nginx-1.11.6-amqp/conf/conf.d/lastlog.conf
+nginx-1.11.6-amqp/conf/conf.d/lastlog/lastlog.conf
 nginx-1.11.6-amqp/conf/conf.d/other/
 nginx-1.11.6-amqp/conf/conf.d/other/server/
 nginx-1.11.6-amqp/conf/conf.d/other/server/amqp.conf
@@ -106,6 +111,8 @@ nginx-1.11.6-amqp/lua/initd/startup/98-amqp.lua
 nginx-1.11.6-amqp/lua/initd/startup/99-healthcheck.lua
 nginx-1.11.6-amqp/lua/ngx_amqp.lua
 nginx-1.11.6-amqp/lua/ngx_amqp_proxy.lua
+nginx-1.11.6-amqp/lua/shdict_ex.lua
+nginx-1.11.6-amqp/lua/shdict.lua
 nginx-1.11.6-amqp/lua/system.lua
 nginx-1.11.6-amqp/restart.sh
 nginx-1.11.6-amqp/sbin/
