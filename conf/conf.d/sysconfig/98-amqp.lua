@@ -18,9 +18,10 @@ function _M.config()
   CONFIG:set("amqp.vhost", "/")
   CONFIG:set("amqp.ssl", false)
   CONFIG:set("amqp.trace_ddl", true)
-  CONFIG:set("amqp.trace_publish", true)
+  CONFIG:set("amqp.trace_publish", false)
   CONFIG:set("amqp.conn_timeout", 30)
   CONFIG:set("amqp.read_timeout", 30)
+  CONFIG:set("amqp.inactive_timeout", 120)
   CONFIG:set("amqp.heartbeat", 60)
 end
 

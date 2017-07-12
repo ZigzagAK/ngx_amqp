@@ -1,12 +1,23 @@
 local _M = {
-  _VERSION = "1.1.0"
+  _VERSION = "1.3.0"
 }
 
 local amqp  = require "amqp"
 local cjson = require "cjson"
+local shdict = require "shdict"
+local frame = require "frame"
+local c = require "consts"
+local bit = require "bit"
+
+local band   = bit.band
+local bor    = bit.bor
+local lshift = bit.lshift
+local rshift = bit.rshift
 
 local CONFIG = ngx.shared.config
-local AMQP   = ngx.shared.amqp
+
+local AMQP_QUEUE = shdict.new("amqp_queue")
+local AMQP_PUBLISHERS = shdict.new("amqp_publishers")
 
 _M.connect_options = {
   host         = CONFIG:get("amqp.host"),
@@ -17,13 +28,13 @@ _M.connect_options = {
   vhost        = CONFIG:get("amqp.vhost"),
   heartbeat    = CONFIG:get("amqp.heartbeat") or 30,
   conn_timeout = CONFIG:get("amqp.conn_timeout") or 30,
-  read_timeout = CONFIG:get("amqp.read_timeout") or 30,
-  no_wait      = false
+  read_timeout = CONFIG:get("amqp.read_timeout") or 30
 }
 
 local pool_size        = CONFIG:get("amqp.pool_size") or 1
 local async_queue_size = CONFIG:get("amqp.async_queue_size") or 100
 local timeout          = CONFIG:get("amqp.timeout") or 5
+local inactive_timeout = CONFIG:get("amqp.inactive_timeout") or 120
 local trace_ddl        = CONFIG:get("amqp.trace_ddl")
 if trace_ddl == nil then
   trace_ddl = true
@@ -31,38 +42,32 @@ end
 local trace_publish    = CONFIG:get("amqp.trace_publish")
 local retry            = CONFIG:get("amqp.retry") or 3
 
+_M.connect_options.inactive_timeout = inactive_timeout
+
 local function key_fn(o)
   return o.user .. "@" .. o.host .. ":" .. (o.port or "domain").. ":" .. o.vhost
 end
 
-local function error_string(e)
-  if e then
-    return e
-  end
-  return "?"
+local function is_yes(v, def)
+  return v == true or v == 1 or ((v ~= false and type(v) == "string" and v:match("^[1Yy]$")) and true or (def or false))
 end
 
-local function default(v, def)
-  if v ~= nil then
-    return v
-  end
-  return def
-end
-
-local function amqp_connect(opts)
+local function amqp_connect(opts, role)
   local ctx = amqp.new {
-    role            = "producer",
-    ssl             = opts.ssl,
-    user            = opts.user,
-    password        = opts.password,
-    virtual_host    = opts.vhost,
-    no_wait         = opts.no_wait,
-    connect_timeout = opts.conn_timeout * 1000,
-    read_timeout    = opts.read_timeout * 1000,
-    heartbeat       = opts.heartbeat,
+    role             = role,
+    ssl              = opts.ssl,
+    user             = opts.user,
+    password         = opts.password,
+    virtual_host     = opts.vhost,
+    connect_timeout  = opts.conn_timeout * 1000,
+    read_timeout     = opts.read_timeout * 1000,
+    inactive_timeout = opts.inactive_timeout or inactive_timeout,
+    heartbeat        = opts.heartbeat,
+    queue            = role == "consumer" and opts.queue or nil,
+    no_wait          = false
   }
   if not ctx then
-    return false, nil, "failed to create context"
+    return nil, "failed to create context"
   end
 
   local ok, err
@@ -72,194 +77,208 @@ local function amqp_connect(opts)
     ok, err = ctx:connect(opts.host)
   end
   if not ok then
-    return false, nil, err
+    return nil, err
   end
 
   ok, err = ctx:setup()
   if not ok then
     ctx:teardown()
     ctx:close()
-    return false, nil, err
+    return nil, err
   end
 
   ctx.opts.ext = opts
-  ngx.log(ngx.INFO, "AMQP connected, endpoint=", key_fn(ctx.opts.ext))
+  ngx.log(ngx.INFO, "AMQP ", role, " connected, endpoint=", key_fn(ctx.opts.ext))
 
-  return true, ctx, nil
+  return ctx
 end
 
-local function amqp_disconnect(ctx)
-  if ctx then
-    if not ngx.worker.exiting() then
-      ctx:teardown()
-    end
-    ctx:close()
-    ngx.log(ngx.INFO, "AMQP disconnected, endpoint=", key_fn(ctx.opts.ext))
+local function amqp_disconnect(ctx, reply_text)
+  if not ctx then
+    return
   end
+
+  if not ngx.worker.exiting() then
+    ctx:teardown({
+      reply_code = c.err.CONNECTION_FORCED,
+      reply_text = reply_text or "disconnect"
+    })
+  end
+
+  ctx:close()
+
+  ngx.log(ngx.INFO, "AMQP disconnected, endpoint=", key_fn(ctx.opts.ext))
+end
+
+local function compose_error(reply_code, reply_text)
+  if reply_text then
+    return "reply_code=" .. reply_code .. ", reply_text: " .. reply_text
+  end
+  return reply_code
 end
 
 local function amqp_exchange_declare(ctx, req)
-  local ok, err, err2 = amqp.exchange_declare(ctx, {
+  local ok, reply_code, reply_text = ctx:exchange_declare {
     exchange    = req.exch.exchange,
-    typ         = default(req.exch.typ, "topic"),
-    passive     = default(req.exch.passive, false),
-    durable     = default(req.exch.durable, true),
-    auto_delete = default(req.exch.auto_delete, false),
-    internal    = default(req.exch.internal, false),
-    no_wait     = default(req.exch.no_wait, false)
-  })
+    typ         = req.exch.typ or "topic",
+    passive     = is_yes(req.exch.passive),
+    durable     = is_yes(req.exch.durable, true),
+    auto_delete = is_yes(req.exch.auto_delete, false),
+    internal    = is_yes(req.exch.internal)
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP declare exchange: endpoint=", key_fn(req.opts), ", exchange=", cjson.encode(req.exch))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP declare exchange: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_queue_declare(ctx, req)
-  local ok, err, err2 = amqp.queue_declare(ctx, {
+  local ok, reply_code, reply_text = ctx:queue_declare {
     queue       = req.queue.name,
-    passive     = default(req.queue.passive, false),
-    durable     = default(req.queue.durable, true),
-    exclusive   = default(req.queue.exclusive, false),
-    auto_delete = default(req.queue.auto_delete, false),
-    no_wait     = default(req.queue.no_wait, false)
-  })
+    passive     = is_yes(req.queue.passive),
+    durable     = is_yes(req.queue.durable, true),
+    exclusive   = is_yes(req.queue.exclusive, false),
+    auto_delete = is_yes(req.queue.auto_delete, false)
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP declare queue: endpoint=", key_fn(req.opts), ", queue=", cjson.encode(req.queue))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP declare queue: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_queue_bind(ctx, req)
-  local ok, err, err2 = amqp.queue_bind(ctx, {
+  local ok, reply_code, reply_text = ctx:queue_bind {
     queue       = req.bind.queue,
     exchange    = req.bind.exchange,
-    routing_key = req.bind.routing_key or "",
-    no_wait     = default(req.bind.no_wait, false)
-  })
+    routing_key = req.bind.routing_key or ""
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP bind queue: endpoint=", key_fn(req.opts), ", opt=", cjson.encode(req.bind))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP bind queue: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_queue_unbind(ctx, req)
-  local ok, err, err2 = amqp.queue_unbind(ctx, {
+  local ok, reply_code, reply_text = ctx:queue_unbind {
     queue       = req.unbind.queue,
     exchange    = req.unbind.exchange,
-    routing_key = req.unbind.routing_key or "",
-    no_wait     = default(req.unbind.no_wait, false)
-  })
+    routing_key = req.unbind.routing_key or ""
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP unbind queue: endpoint=", key_fn(req.opts), ", opt=", cjson.encode(req.unbind))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP unbind queue: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_exchange_bind(ctx, req)
-  local ok, err, err2 = amqp.exchange_bind(ctx, {
+  local ok, reply_code, reply_text = ctx:exchange_bind {
     destination = req.ebind.destination,
     source      = req.ebind.source,
-    routing_key = req.ebind.routing_key or "",
-    no_wait     = default(req.ebind.no_wait, false)
-  })
+    routing_key = req.ebind.routing_key or ""
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP bind exchange: endpoint=", key_fn(req.opts), ", opt=", cjson.encode(req.ebind))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP bind exchange: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_exchange_unbind(ctx, req)
-  local ok, err, err2 = amqp.exchange_unbind(ctx, {
+  local ok, reply_code, reply_text = ctx:exchange_unbind {
     destination = req.eunbind.destination,
     source      = req.eunbind.source,
-    routing_key = req.eunbind.routing_key or "",
-    no_wait     = default(req.eunbind.no_wait, false)
-  })
+    routing_key = req.eunbind.routing_key or ""
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP unbind exchange: endpoint=", key_fn(req.opts), ", opt=", cjson.encode(req.eunbind))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP unbind exchange: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_exchange_delete(ctx, req)
-  local ok, err, err2 = amqp.exchange_delete(ctx, {
+  local ok, reply_code, reply_text = ctx:exchange_delete {
     exchange  = req.edelete.exchange,
-    if_unused = default(req.edelete.is_unused, true),
-    no_wait   = default(req.edelete.no_wait, false)
-  })
+    if_unused = is_yes(req.edelete.is_unused, true)
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP delete exchange: endpoint=", key_fn(req.opts), ", opt=", cjson.encode(req.edelete))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP delete exchange: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_queue_delete(ctx, req)
-  local ok, err, err2 = amqp.queue_delete(ctx, {
+  local ok, reply_code, reply_text = ctx:queue_delete {
     queue     = req.qdelete.queue,
-    if_empty  = default(req.qdelete.if_empty, false),
-    if_unused = default(req.qdelete.is_unused, true),
-    no_wait   = default(req.qdelete.no_wait, false)
-  })
+    if_empty  = is_yes(req.qdelete.if_empty),
+    if_unused = is_yes(req.qdelete.is_unused, true)
+  }
 
   if trace_ddl then
     ngx.log(ngx.INFO, "AMQP delete queue: endpoint=", key_fn(req.opts), ", opt=", cjson.encode(req.qdelete))
   end
 
   if not ok then
-    err = error_string(err2 or err)
+    local err = compose_error(reply_code, reply_text)
     ngx.log(ngx.ERR, "AMQP delete queue: ", err)
+    return nil, err
   end
 
-  return ok, err
+  return true
 end
 
 local function amqp_publish_message(ctx, req)
@@ -273,7 +292,99 @@ local function amqp_publish_message(ctx, req)
   end
 
   if not ok then
-    ngx.log(ngx.ERR, "AMQP publish failed: ", error_string(err))
+    ngx.log(ngx.ERR, "AMQP publish failed: ", err)
+    return nil, err
+  end
+
+  return true
+end
+
+local function queue_add(req)
+  return AMQP_QUEUE:object_rpush("Q", req)
+end
+
+local function queue_get()
+  return AMQP_QUEUE:object_lpop("Q")
+end
+
+local function try_send_heartbeat(amqp_conn)
+  local now = ngx.now()
+  if now - amqp_conn.hb.last < amqp_conn.ctx.opts.ext.heartbeat then
+    return true
+  end
+
+  amqp_conn.hb.timeouts = bor(lshift(amqp_conn.hb.timeouts, 1), 1)
+  amqp_conn.hb.last = now
+
+  local ok, err = frame.wire_heartbeat(amqp_conn.ctx)
+  if not ok then
+    return false, "AMQP sent heartbeat error: " .. err
+  end
+
+  return true
+end
+
+local function check_heartbeat_timeout(amqp_conn)
+  local timedout = amqp_conn.ctx:timedout(amqp_conn.hb.timeouts)
+  return not timedout, timedout and "heartbeat timeout" or nil  
+end
+
+local function check_frame(amqp_conn, f)
+  if f.type == c.frame.METHOD_FRAME then
+    if f.class_id == c.class.CHANNEL then
+      if f.method_id == c.method.channel.CLOSE then
+        return false, "AMQP channel closed"
+      end
+    elseif f.class_id == c.class.CONNECTION then
+      if f.method_id == c.method.connection.CLOSE then
+        return false, "AMQP connection closed"
+      end
+    end
+  elseif f.type == c.frame.HEARTBEAT_FRAME then
+    amqp_conn.hb.last = ngx.now()
+    amqp_conn.hb.timeouts = band(lshift(amqp_conn.hb.timeouts, 1), 0)
+    local ok, err = frame.wire_heartbeat(amqp_conn.ctx)
+    if not ok then
+      return false, "AMQP heartbeat response send error: " .. (err or "?")
+    end
+  end
+  return true
+end
+
+local function consume_frame(amqp_conn)
+  local f, err = frame.consume_frame(amqp_conn.ctx)
+  if f then
+    return check_frame(amqp_conn, f)
+  end
+
+  if err == "timeout" then
+    return true
+  end
+
+  if err == "wantread" then
+    return nil, "AMQP SSL socket needs to do handshake again"
+  end
+
+  return nil, "unexpected error"  
+end
+
+local function consume(amqp_conn)
+  return consume_frame(amqp_conn)
+end
+
+local function amqp_pool(amqp_conn)
+  amqp_conn.ctx.sock:settimeout(10)
+
+  local ok, err = consume(amqp_conn)
+
+  -- restore timeout
+  amqp_conn.ctx.sock:settimeout(amqp_conn.ctx.opts.ext.read_timeout)
+
+  if ok then
+    ok, err = try_send_heartbeat(amqp_conn)
+    if ok then
+      ok, err = check_heartbeat_timeout(amqp_conn)
+    end
   end
 
   return ok, err
@@ -282,21 +393,7 @@ end
 local amqp_worker
 amqp_worker = {
 
-  queue = {},
   pool = {},
-
-  queue_add = function(req)
-    table.insert(amqp_worker.queue, req)
-    AMQP:incr("amqp_worker.queue", 1, 0)
-  end,
-
-  queue_get = function()
-    local req = table.remove(amqp_worker.queue)
-    if req then
-      AMQP:incr("amqp_worker.queue", -1)
-    end
-    return req
-  end,
 
   thread_func = function(cache, num)
     ngx.log(ngx.INFO, "AMQP worker #", num, " has been started")
@@ -304,144 +401,29 @@ amqp_worker = {
     local yield = coroutine.yield
     local self = coroutine.running()
 
-    local bit = require "bit"
-
-    local band   = bit.band
-    local bor    = bit.bor
-    local lshift = bit.lshift
-    local rshift = bit.rshift
-
-    local frame = require "frame"
-    local c     = require "consts"
-
-    local function try_send_heartbeat(amqp_conn)
-      local now = ngx.now()
-
-      if now - amqp_conn.hb.last < amqp_conn.ctx.opts.ext.heartbeat then
-        return true, nil
-      end
-
-      amqp_conn.hb.timeouts = bor(lshift(amqp_conn.hb.timeouts, 1), 1)
-      amqp_conn.hb.last = now
-
-      local ok, err = frame.wire_heartbeat(amqp_conn.ctx)
-      if not ok then
-        return false, "AMQP sent hearbeat error: " .. err
-      end
-
-      ngx.log(ngx.INFO, "AMQP heartbeat has been sent [timestamp]: ", ngx.time())
-
-      return true, nil
-    end
-
-    local function check_heartbeat_timeout(amqp_conn)
-      if amqp_conn.ctx:timedout(amqp_conn.hb.timeouts) then
-        return nil, "heartbeat timeout"
-      end
-      return true, nil
-    end
-
-    local function consume_frame(amqp_conn)
-      local f, err = frame.consume_frame(amqp_conn.ctx)
-
-      if not f then
-        if err and err ~= "timeout" then
-          return false, err
-        else
-          return true, nil
-        end
-      end
-
-      local ok = true
-      err = nil
-
-      if f.type == c.frame.METHOD_FRAME then
-        if f.class_id == c.class.CHANNEL then
-          if f.method_id == c.method.channel.CLOSE then
-            return nil, "AMQP channel closed"
-          end
-        elseif f.class_id == c.class.CONNECTION then
-          if f.method_id == c.method.connection.CLOSE then
-            return nil, "AMQP connection closed"
-          end
-        elseif f.class_id == c.class.BASIC then
-          if f.method_id == c.method.basic.DELIVER then
-            if f.method ~= nil then
-              ngx.log(ngx.DEBUG, "AMQP basic_deliver ", cjson.encode(f.method))
-            end
-          end
-        end
-      elseif f.type == c.frame.HEADER_FRAME then
-         ngx.log(ngx.DEBUG, string.format("AMQP header class_id: %d weight: %d, body_size: %d, frame.properties: %s",
-                                          f.class_id, f.weight, f.body_size, cjson.encode(f.properties)))
-      elseif f.type == c.frame.HEARTBEAT_FRAME then
-        amqp_conn.hb.last = ngx.now()
-        ngx.log(ngx.INFO, "AMQP heartbeat received [timestamp]: ", ngx.time())
-        amqp_conn.hb.timeouts = band(lshift(amqp_conn.hb.timeouts, 1), 0)
-        ok, err = frame.wire_heartbeat(amqp_conn.ctx)
-        if not ok then
-          err = "AMQP heartbeat response send error: " .. error_string(err)
-        else
-          ngx.log(ngx.INFO, "AMQP heartbeat response sent")
-        end
-      end
-
-      return ok, err
-    end
-
-    local function consume(amqp_conn)
-      local ok, err = consume_frame(amqp_conn)
-
-      if not ok then
-        if err == "wantread" then
-          return nil, "AMQP SSL socket needs to do handshake again"
-        end
-        return nil, err
-      end
-
-      return ok, err
-    end
-
-    local function amqp_pool(amqp_conn)
-      local ok, err
-
-      amqp_conn.ctx.sock:settimeout(10)
-      ok, err = consume(amqp_conn)
-      amqp_conn.ctx.sock:settimeout(amqp_conn.ctx.opts.ext.read_timeout)
-
-      if ok then
-        ok, err = try_send_heartbeat(amqp_conn)
-      end
-
-      if ok then
-        ok, err = check_heartbeat_timeout(amqp_conn)
-      end
-
-      return ok, err
-    end
-
-    while true
+    while not ngx.worker.exiting()
     do
 :: continue ::
       yield(self)
 
-      local req = amqp_worker.queue_get()
+      local ok, err
+
+      local req = queue_get()
 
       if not req then
-        if ngx.worker.exiting() then
-          break
-        end
-
-        local ok, err
-
         for key, amqp_conn in pairs(cache)
         do
+          -- check for available frames
           ok, err = amqp_pool(amqp_conn)
           if not ok then
-            ngx.log(ngx.ERR, "#", num, " AMQP error: ", error_string(err))
-            amqp_disconnect(amqp_conn.ctx)
+            ngx.log(ngx.ERR, "#", num, " AMQP error: ", err or "?")
+            amqp_disconnect(amqp_conn.ctx, err)
             cache[key] = nil
-          end
+          elseif amqp_conn.last_op + amqp_conn.ctx.opts.ext.inactive_timeout < ngx.now() then
+            ngx.log(ngx.INFO, "#", num, " AMQP close inactive connection")
+            amqp_disconnect(amqp_conn.ctx, "inactive")
+            cache[key] = nil            
+          end 
         end
 
         if not ok then
@@ -451,34 +433,34 @@ amqp_worker = {
         goto continue
       end
 
-      local ok, err
-
       for _=1,retry
       do
-        if req.forgot then
+        local status = AMQP_QUEUE:object_get(req.status_key) 
+        if status and status.forgot then
           goto continue
         end
-
-        ok = true
-        err = nil
 
         local key = key_fn(req.opts)
         local amqp_conn = cache[key] or {}
 
         if not amqp_conn.ctx then
-          ok, amqp_conn.ctx, err = amqp_connect(req.opts)
-          if ok then
+          -- no cached connection
+          amqp_conn.ctx, err = amqp_connect(req.opts, "producer")
+          if amqp_conn.ctx then
             amqp_conn.hb = { last = ngx.now(), timeouts = 0 }
             cache[key] = amqp_conn
-            AMQP:incr(key, 1, 0)
+            AMQP_PUBLISHERS:incr(key, 1, 0)
           else
-            ngx.log(ngx.ERR, "#", num, " AMQP connect: ", error_string(err))
+            ngx.log(ngx.ERR, "#", num, " AMQP connect: ", err or "?")
           end
         end
 
-        local ctx = amqp_conn.ctx
+        amqp_conn.last_op = ngx.now()
 
-        if ok and req.exch and req.exch.declare then
+        local ctx = amqp_conn.ctx
+        ok = true
+
+        if req.exch and req.exch.declare then
           ok, err = amqp_exchange_declare(ctx, req)
         end
 
@@ -514,27 +496,29 @@ amqp_worker = {
           ok, err = amqp_publish_message(ctx, req)
         end
 
-        if not ok then
-          amqp_disconnect(ctx)
-          cache[key] = nil
-          AMQP:incr(key, -1)
-        end
-
         if ok then
           amqp_conn.hb.last = ngx.now()
           break
         end
+
+        amqp_disconnect(ctx, err)
+        cache[key] = nil
+        AMQP_PUBLISHERS:incr(key, -1)
       end
 
-      req.err = err
-      req.ready = true
+      if req.expires then
+        AMQP_QUEUE:object_set(req.status_key, {
+          status = ok,
+          err = err
+        }, req.expires - ngx.now())
+      end
     end
 
     for key, amqp_conn in pairs(cache)
     do
-      amqp_disconnect(amqp_conn.ctx)
+      amqp_disconnect(amqp_conn.ctx, "shutdown")
       cache[key] = nil
-      AMQP:incr(key, -1)
+      AMQP_PUBLISHERS:incr(key, -1)
     end
 
     ngx.log(ngx.INFO, "AMQP worker #", num, " has been stopped")
@@ -547,57 +531,66 @@ amqp_worker = {
     do
       local thread = { cache = {} }
       thread.id = ngx.thread.spawn(amqp_worker.thread_func, thread.cache, i)
-      table.insert(amqp_worker.pool, thread)
+      amqp_worker.pool[i] = thread
     end
 
-    for _, thread in pairs(amqp_worker.pool)
+    for i=1,pool_size
     do
-      ngx.thread.wait(thread.id)
+      ngx.thread.wait(amqp_worker.pool[i].id)
     end
   end
 }
 
 local function wait_queue()
-  local to = ngx.now() + timeout
-  local queue_size = AMQP:get("amqp_worker.queue") or 0
-  local remain = timeout
+  local expires = ngx.now() + timeout
+  local now
 
-  while queue_size >= async_queue_size and remain > 0
-  do
-    ngx.sleep(0.01)
-    queue_size = AMQP:get("amqp_worker.queue")
-    remain = to - ngx.now()
+  repeat
+    local queue_size = AMQP_QUEUE:llen("Q") or 0
+    if queue_size >= async_queue_size then
+      ngx.sleep(0.01)
+    end
+    now = ngx.now()
+  until queue_size < async_queue_size or now >= expires
+
+  if now < expires then
+    return expires - now
   end
 
-  if remain <= 0 then
-    return 0, "AMQP throotled"
-  end
-
-  return remain, nil
+  return 0, "AMQP throotled"
 end
 
-local function wait(req, timeout)
-  local to = ngx.now() + timeout
+local function wait(req, remains)
+  req.expires = ngx.now() + remains
+  req.status_key =  "S:" .. AMQP_QUEUE:incr("SEQNO", 1, 0)
 
-  amqp_worker.queue_add(req)
+  local resp
 
-  while not req.ready and ngx.now() < to
-  do
-    ngx.sleep(0.001)
+  local len, err = queue_add(req)
+  if not len then
+    -- no memory
+    return nil, err
   end
 
-  if not req.ready then
-    req.forgot = true
+  repeat
+    ngx.sleep(0.001)
+    resp = AMQP_QUEUE:object_get(req.status_key)
+  until resp or ngx.now() > req.expires 
+
+  if not resp then
+    AMQP_QUEUE:object_set(req.status_key, {
+      forgot = true
+    }, timeout * len)
     return false, "AMQP timeout"
   end
 
-  return not req.err, req.err
+  return resp.status, resp.err
 end
 
 function _M.exchange_declare(exchange, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -608,13 +601,13 @@ function _M.exchange_declare(exchange, options)
 
   req.exch.declare = true
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.queue_declare(q, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -623,13 +616,13 @@ function _M.queue_declare(q, options)
     queue = q
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.queue_bind(b, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -638,13 +631,13 @@ function _M.queue_bind(b, options)
     bind = b
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.queue_unbind(ub, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -653,13 +646,13 @@ function _M.queue_unbind(ub, options)
     unbind = ub
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.exchange_bind(eb, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -668,13 +661,13 @@ function _M.exchange_bind(eb, options)
     ebind = eb
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.exchange_unbind(eub, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -683,13 +676,13 @@ function _M.exchange_unbind(eub, options)
     eunbind = eub
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.exchange_delete(ed, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -698,13 +691,13 @@ function _M.exchange_delete(ed, options)
     edelete = ed
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.queue_delete(qd, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -713,13 +706,13 @@ function _M.queue_delete(qd, options)
     qdelete = qd
   }
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.publish(exchange, message, async, properties, options)
-  local remain, err = wait_queue()
+  local remains, err = wait_queue()
 
-  if remain == 0 then
+  if remains == 0 then
     return false, err
   end
 
@@ -731,34 +724,99 @@ function _M.publish(exchange, message, async, properties, options)
   }
 
   if async then
-    amqp_worker.queue_add(req)
-    return true, nil
+    return queue_add(req)
   end
 
-  return wait(req, remain)
+  return wait(req, remains)
 end
 
 function _M.startup()
   local ok, err = ngx.timer.at(0, amqp_worker.startup)
   if not ok then
-    error("AMQP failed to start workers: " .. error_string(err))
+    error("AMQP failed to start workers: " .. err)
   end
 end
 
 function _M.info()
   local r = {}
 
-  r.queue_size = AMQP:get("amqp_worker.queue") or 0
+  r.queue_size = AMQP_QUEUE:llen("Q") or 0
   r.publishers = {}
 
-  for _, key in pairs(AMQP:get_keys())
+  for _, key in pairs(AMQP_PUBLISHERS:get_keys())
   do
-    if key:match("^.+@.+:[0-9]+:.+$") then
-      r.publishers[key] = AMQP:get(key)
-    end
+    r.publishers[key] = AMQP_PUBLISHERS:get(key)
   end
 
   return r
+end
+
+function _M.get_properties()
+  local req_headers = ngx.req.get_headers()
+  local t = {}
+  for k, v in pairs(req_headers)
+  do
+    local amqp_header = k:match("^amqp%-(.+)$")
+    if amqp_header then
+      if amqp_header == "headers" then
+        v = cjson.decode(v)
+      end
+      t[amqp_header:gsub("-","_")] = v
+    end
+  end
+  return t
+end
+
+function _M.consume(opts, callback, options)
+  if not opts then
+    return nil, "no opts"
+  end
+  if not opts.queue then
+    return nil, "no opts.queue"
+  end
+  if not callback then
+    return nil, "no callback"
+  end
+
+  local consume_loop = function()
+    ngx.log(ngx.INFO, "AMQP start consumer: ", cjson.encode(opts))
+
+    local o = {}
+    for k,v in pairs(options or _M.connect_options) do o[k] = v end
+
+    o.queue = opts.queue
+
+    local amqp_conn, err = amqp_connect(o, "consumer")
+    if not amqp_conn then
+      return nil, err
+    end
+
+    local ok, reply_code, reply_text = amqp_conn:basic_consume {
+      no_ack = is_yes(opts.auto_ack),
+      exclusive = opts.exclusive
+    }
+    if not ok then
+      amqp_disconnect(amqp_conn)
+      return nil, compose_error(reply_code, reply_text)
+    end
+
+    ok, err = amqp_conn:consume_loop(callback)
+    if not ok then
+      ngx.log(ngx.WARN, "AMQP consumer: ", err)
+    end
+
+    amqp_disconnect(amqp_conn, "disconnect")
+  end
+
+  local consume
+  consume = function(premature)
+    consume_loop()
+    if not ngx.worker.exiting() then
+      ngx.timer.at(1, consume)
+    end
+  end
+
+  return ngx.timer.at(0, consume)
 end
 
 return _M
