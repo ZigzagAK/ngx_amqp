@@ -819,4 +819,10 @@ function _M.consume(opts, callback, options)
   return ngx.timer.at(0, consume)
 end
 
+do
+  -- turn off any log messages inside the library
+  logger = require "logger"
+  logger.set_level(0)
+end
+
 return _M

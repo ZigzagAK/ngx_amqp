@@ -287,4 +287,10 @@ function _M.proxy(upstream)
     sock_up:close()
 end
 
+do
+  -- turn off any log messages inside the library
+  logger = require "logger"
+  logger.set_level(0)
+end
+
 return _M
