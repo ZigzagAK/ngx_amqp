@@ -21,6 +21,7 @@ nginx-1.11.6-amqp/conf/conf.d/other/upstream/
 nginx-1.11.6-amqp/conf/conf.d/other/upstream/stream/
 nginx-1.11.6-amqp/conf/conf.d/other/upstream/stream/amqp_proxy.conf
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/
+nginx-1.11.6-amqp/conf/conf.d/sysconfig/98-amqp_consumer.lua
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/98-amqp.lua
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/98-amqp_proxy.lua
 nginx-1.11.6-amqp/conf/conf.d/sysconfig/99-healthcheck.lua
@@ -107,8 +108,10 @@ nginx-1.11.6-amqp/lua/
 nginx-1.11.6-amqp/lua/initd/
 nginx-1.11.6-amqp/lua/initd/init.lua
 nginx-1.11.6-amqp/lua/initd/startup/
+nginx-1.11.6-amqp/lua/initd/startup/98-amqp_consumer.lua
 nginx-1.11.6-amqp/lua/initd/startup/98-amqp.lua
 nginx-1.11.6-amqp/lua/initd/startup/99-healthcheck.lua
+nginx-1.11.6-amqp/lua/ngx_amqp_consumer.lua
 nginx-1.11.6-amqp/lua/ngx_amqp.lua
 nginx-1.11.6-amqp/lua/ngx_amqp_proxy.lua
 nginx-1.11.6-amqp/lua/shdict_ex.lua
