@@ -16,6 +16,8 @@ nginx-1.11.6-amqp/conf/conf.d/lastlog.conf
 nginx-1.11.6-amqp/conf/conf.d/lastlog/lastlog.conf
 nginx-1.11.6-amqp/conf/conf.d/other/
 nginx-1.11.6-amqp/conf/conf.d/other/server/
+nginx-1.11.6-amqp/conf/conf.d/other/server/amqp/
+nginx-1.11.6-amqp/conf/conf.d/other/server/amqp/amqp.conf
 nginx-1.11.6-amqp/conf/conf.d/other/server/amqp.conf
 nginx-1.11.6-amqp/conf/conf.d/other/upstream/
 nginx-1.11.6-amqp/conf/conf.d/other/upstream/stream/
