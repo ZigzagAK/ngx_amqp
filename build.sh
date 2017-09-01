@@ -75,9 +75,9 @@ function build_debug() {
               --with-cc-opt="-O0" \
               --add-module=../ngx_devel_kit \
               --add-module=../lua-nginx-module \
+              --add-module=../stream-lua-nginx-module \
               --add-module=../ngx_dynamic_upstream \
-              --add-module=../ngx_dynamic_upstream_lua \
-              --add-module=../stream-lua-nginx-module > /dev/null
+              --add-module=../ngx_dynamic_upstream_lua > /dev/null 2>/dev/stderr
 
   r=$?
   if [ $r -ne 0 ]; then
@@ -85,7 +85,7 @@ function build_debug() {
   fi
 
   echo "Build debug nginx-$VERSION$SUFFIX"
-  make -j 8 > /dev/null
+  make -j 8 > /dev/null 2>/dev/stderr
 
   r=$?
   if [ $r -ne 0 ]; then
@@ -105,9 +105,9 @@ function build_release() {
               --with-stream \
               --add-module=../ngx_devel_kit \
               --add-module=../lua-nginx-module \
+              --add-module=../stream-lua-nginx-module \
               --add-module=../ngx_dynamic_upstream \
-              --add-module=../ngx_dynamic_upstream_lua \
-              --add-module=../stream-lua-nginx-module > /dev/null
+              --add-module=../ngx_dynamic_upstream_lua > /dev/null 2>/dev/stderr
 
   r=$?
   if [ $r -ne 0 ]; then
@@ -115,7 +115,7 @@ function build_release() {
   fi
 
   echo "Build release nginx-$VERSION$SUFFIX"
-  make -j 8 > /dev/null
+  make -j 8 > /dev/null 2>/dev/stderr
 
   r=$?
   if [ $r -ne 0 ]; then
@@ -202,7 +202,7 @@ function download() {
   download_module ZigzagAK    ngx_dynamic_upstream_lua         master
   download_module simpl       ngx_devel_kit                    master
   download_module ZigzagAK    lua-nginx-module                 mixed
-  download_module ZigzagAK    stream-lua-nginx-module          fix-compile-1.11.4
+  download_module openresty   stream-lua-nginx-module          master
   download_module openresty   lua-cjson                        master
 
   cd ..
@@ -341,14 +341,7 @@ kernel_version=$(uname -r)
 cd install
 
 tar zcvf nginx-$VERSION$SUFFIX-$kernel_name-$kernel_version.tar.gz nginx-$VERSION$SUFFIX
-
-gunzip -c nginx-$VERSION$SUFFIX-$kernel_name-$kernel_version.tar.gz | tar --list | sort | diff ../t/dist_content.txt -
-r=$?
-if [ $r -eq 0 ]; then
-  rm -rf nginx-$VERSION$SUFFIX
-else
-  rm nginx-$VERSION$SUFFIX-$kernel_name-$kernel_version.tar.gz
-fi
+rm -rf nginx-$VERSION$SUFFIX
 
 cd ..
 
