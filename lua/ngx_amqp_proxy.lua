@@ -36,7 +36,7 @@ local c_text = {
   },
 
   method = {
-    [c.class.CONNECTION] = { 
+    [c.class.CONNECTION] = {
       [c.method.connection.START]     = "START",
       [c.method.connection.START_OK]  = "START_OK",
       [c.method.connection.SECURE]    = "SECURE",
@@ -289,7 +289,7 @@ end
 
 do
   -- turn off any log messages inside the library
-  logger = require "logger"
+  local logger = require "logger"
   logger.set_level(0)
 end
 

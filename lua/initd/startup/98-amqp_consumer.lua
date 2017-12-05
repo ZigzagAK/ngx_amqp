@@ -13,7 +13,7 @@ function _M.startup()
   local consumers = CONFIG:object_get("amqp.consumers") or {}
   for i=1,#consumers
   do
-    local consumer = consumers[i] 
+    local consumer = consumers[i]
     local p,f = consumer.callback:match("(.+)%.([^%.]+)$")
     local ok, m = pcall(require, p)
     if ok then

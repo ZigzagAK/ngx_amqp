@@ -12,7 +12,6 @@ local bit = require "bit"
 local band   = bit.band
 local bor    = bit.bor
 local lshift = bit.lshift
-local rshift = bit.rshift
 
 local CONFIG = ngx.shared.config
 
@@ -326,7 +325,7 @@ end
 
 local function check_heartbeat_timeout(amqp_conn)
   local timedout = amqp_conn.ctx:timedout(amqp_conn.hb.timeouts)
-  return not timedout, timedout and "heartbeat timeout" or nil  
+  return not timedout, timedout and "heartbeat timeout" or nil
 end
 
 local function check_frame(amqp_conn, f)
@@ -365,7 +364,7 @@ local function consume_frame(amqp_conn)
     return nil, "AMQP SSL socket needs to do handshake again"
   end
 
-  return nil, "unexpected error"  
+  return nil, "unexpected error"
 end
 
 local function consume(amqp_conn)
@@ -422,8 +421,8 @@ amqp_worker = {
           elseif amqp_conn.last_op + amqp_conn.ctx.opts.ext.inactive_timeout < ngx.now() then
             ngx.log(ngx.INFO, "#", num, " AMQP close inactive connection")
             amqp_disconnect(amqp_conn.ctx, "inactive")
-            cache[key] = nil            
-          end 
+            cache[key] = nil
+          end
         end
 
         if not ok then
@@ -435,7 +434,7 @@ amqp_worker = {
 
       for _=1,retry
       do
-        local status = AMQP_QUEUE:object_get(req.status_key) 
+        local status = AMQP_QUEUE:object_get(req.status_key)
         if status and status.forgot then
           goto continue
         end
@@ -575,7 +574,7 @@ local function wait(req, remains)
   repeat
     ngx.sleep(0.001)
     resp = AMQP_QUEUE:object_get(req.status_key)
-  until resp or ngx.now() > req.expires 
+  until resp or ngx.now() > req.expires
 
   if not resp then
     AMQP_QUEUE:object_set(req.status_key, {
@@ -809,7 +808,7 @@ function _M.consume(opts, callback, options)
   end
 
   local consume
-  consume = function(premature)
+  consume = function()
     consume_loop()
     if not ngx.worker.exiting() then
       ngx.timer.at(1, consume)
@@ -821,7 +820,7 @@ end
 
 do
   -- turn off any log messages inside the library
-  logger = require "logger"
+  local logger = require "logger"
   logger.set_level(0)
 end
 
