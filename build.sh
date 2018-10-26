@@ -11,7 +11,7 @@ build_deps=0
 
 DIR="$(pwd)"
 
-VERSION="1.11.6"
+VERSION="1.13.12"
 PCRE_VERSION="8.39"
 LUAJIT_VERSION="2.1.0-beta2"
 
@@ -77,7 +77,8 @@ function build_debug() {
               --add-module=../lua-nginx-module \
               --add-module=../stream-lua-nginx-module \
               --add-module=../ngx_dynamic_upstream \
-              --add-module=../ngx_dynamic_upstream_lua > /dev/null 2>/dev/stderr
+              --add-module=../ngx_dynamic_upstream_lua \
+              --add-module=../ngx_dynamic_healthcheck > /dev/null 2>/dev/stderr
 
   r=$?
   if [ $r -ne 0 ]; then
@@ -107,7 +108,8 @@ function build_release() {
               --add-module=../lua-nginx-module \
               --add-module=../stream-lua-nginx-module \
               --add-module=../ngx_dynamic_upstream \
-              --add-module=../ngx_dynamic_upstream_lua > /dev/null 2>/dev/stderr
+              --add-module=../ngx_dynamic_upstream_lua \
+              --add-module=../ngx_dynamic_healthcheck > /dev/null 2>/dev/stderr
 
   r=$?
   if [ $r -ne 0 ]; then
@@ -177,7 +179,7 @@ function extract_downloads() {
   for d in $(ls -1 *.tar.gz)
   do
     echo "Extracting $d"
-    tar zxf $d -C ../build --no-overwrite-dir --keep-old-files 2>/dev/null
+    tar zxf $d -C $BASE_PREFIX --keep-old-files 2>/dev/null
   done
 
   cd ..
@@ -200,9 +202,10 @@ function download() {
 
   download_module ZigzagAK    ngx_dynamic_upstream             master
   download_module ZigzagAK    ngx_dynamic_upstream_lua         master
+  download_module ZigzagAK    ngx_dynamic_healthcheck          master
   download_module simpl       ngx_devel_kit                    master
   download_module ZigzagAK    lua-nginx-module                 mixed
-  download_module openresty   stream-lua-nginx-module          master
+  download_module ZigzagAK    stream-lua-nginx-module          mixed
   download_module openresty   lua-cjson                        master
 
   cd ..
@@ -242,7 +245,6 @@ function build() {
 
   install_file  "$JIT_PREFIX/usr/local/lib"           .
   install_file  lua-cjson/cjson.so                    lib/lua/5.1
-  install_file  "ngx_dynamic_upstream_lua/lib"        .
 
   cd ..
 }
@@ -311,7 +313,6 @@ function install_lua_modules() {
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config scripts/restart.sh                        .                     master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/system.lua                            lua                   master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/initd/init.lua                        lua/initd             master 0
-  install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config lua/initd/startup/99-healthcheck.lua      lua/initd/startup     master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/init                          conf/conf.d           master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/healthcheck                   conf/conf.d           master 0
   install_resty_module ZigzagAK     nginx-resty-auto-healthcheck-config conf/conf.d/healthcheck.conf              conf/conf.d           master 0
